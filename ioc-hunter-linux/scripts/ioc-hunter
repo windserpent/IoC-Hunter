@@ -436,26 +436,108 @@ Note: Root privileges are required for comprehensive log access.
             print()
     
     def export_results(self, results, args: argparse.Namespace):
-        """Export scan results."""
+        """Export scan results with improved UX for file naming and conflicts."""
         assert self.scanner is not None
         assert self.logger is not None
 
         try:
+            # Determine final output path
+            output_path = self._resolve_output_path(results, args)
+            if not output_path:
+                return  # User cancelled
+            
             success = self.scanner.export_results(
                 results, 
                 args.export, 
-                args.output
+                output_path
             )
             
             if success:
-                output_path = args.output or f"ioc_hunter_results.{args.export}"
-                print(f"Results exported to: {output_path}")
+                # Convert to absolute path for display
+                abs_path = os.path.abspath(output_path)
+                print(f"Results exported to: {abs_path}")
             else:
                 print("Export failed. Check logs for details.")
                 
         except Exception as e:
             self.logger.error(f"Export error: {e}")
             print(f"Export error: {e}")
+    
+    def _resolve_output_path(self, results, args: argparse.Namespace) -> Optional[str]:
+        """
+        Resolve the final output path with auto-naming and conflict resolution.
+        
+        Returns:
+            Final output path, or None if user cancelled
+        """
+        # If no output specified, generate automatic filename
+        if not args.output:
+            return self._generate_auto_filename(results, args.export)
+        
+        # Check if explicitly specified file exists
+        if os.path.exists(args.output):
+            return self._handle_file_conflict(args.output, results, args.export)
+        
+        return args.output
+    
+    def _generate_auto_filename(self, results, export_format: str) -> str:
+        """Generate automatic filename based on scan mode and timestamp."""
+        # Determine scan mode from results
+        scan_mode = getattr(results, 'scan_mode', 'scan').lower()
+        
+        # Generate timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        
+        # Get file extension from scanner
+        try:
+            assert self.scanner is not None
+            exporters = self.scanner.get_available_exporters()
+            extension = next((exp['file_extension'] for exp in exporters 
+                            if exp['name'] == export_format), f'.{export_format}')
+        except:
+            extension = f'.{export_format}'
+        
+        # Remove leading dot if present
+        if extension.startswith('.'):
+            extension = extension[1:]
+        
+        filename = f"{scan_mode}_{export_format}_{timestamp}.{extension}"
+        return filename
+    
+    def _handle_file_conflict(self, output_path: str, results, export_format: str) -> Optional[str]:
+        """
+        Handle file conflict with interactive user prompt.
+        
+        Returns:
+            Final output path, or None if user cancelled
+        """
+        abs_path = os.path.abspath(output_path)
+        
+        print(f"\nOutput file already exists: {abs_path}")
+        print("Choose an action:")
+        print("  [O]verwrite existing file")
+        print("  [R]ename to auto-generated filename")  
+        print("  [C]ancel export")
+        
+        while True:
+            try:
+                choice = input("Enter choice (O/R/C): ").strip().upper()
+                
+                if choice == 'O':
+                    return output_path
+                elif choice == 'R':
+                    auto_filename = self._generate_auto_filename(results, export_format)
+                    print(f"Using filename: {auto_filename}")
+                    return auto_filename
+                elif choice == 'C':
+                    print("Export cancelled.")
+                    return None
+                else:
+                    print("Invalid choice. Please enter O, R, or C.")
+                    
+            except (KeyboardInterrupt, EOFError):
+                print("\nExport cancelled.")
+                return None
     
     def list_categories(self):
         """List available IoC categories."""
