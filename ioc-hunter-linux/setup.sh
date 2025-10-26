@@ -24,10 +24,16 @@ warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 
-# Check if running as root
-if [[ $EUID -eq 0 ]]; then
-    warning "Running as root. This is acceptable but not required for setup."
+# Check if running as root (REQUIRED)
+if [[ $EUID -ne 0 ]]; then
+    error "This script requires root privileges for system package installation."
+    echo ""
+    echo "Please run with: sudo ./setup.sh"
+    echo ""
+    exit 1
 fi
+
+info "Running with required root privileges"
 
 # Detect distribution
 info "Detecting Linux distribution..."
@@ -157,8 +163,118 @@ if ! command -v pip3 &> /dev/null; then
 fi
 
 # Install Python packages
-info "Installing Python packages..."
-pip3 install --user -r requirements.txt
+info "Installing core Python packages via system package manager..."
+case "$PACKAGE_MANAGER" in
+    "apt")
+        sudo apt install -y \
+            python3-dateutil \
+            python3-requests \
+            python3-yaml || true  # Don't fail if some packages unavailable
+        
+        # python3-systemd might not be available on all Ubuntu versions
+        if sudo apt install -y python3-systemd; then
+            success "python3-systemd installed via apt"
+        else
+            warning "python3-systemd not available via apt, will try pip"
+        fi
+        ;;
+    "dnf")
+        sudo dnf install -y \
+            python3-dateutil \
+            python3-requests \
+            python3-yaml || true
+        
+        if sudo dnf install -y python3-systemd; then
+            success "python3-systemd installed via dnf"
+        else
+            warning "python3-systemd not available via dnf, will try pip"
+        fi
+        ;;
+    "yum")
+        sudo yum install -y \
+            python3-dateutil \
+            python3-requests \
+            python3-yaml || true
+        
+        # python3-systemd often not available on RHEL-based systems
+        if sudo yum install -y python3-systemd; then
+            success "python3-systemd installed via yum"
+        else
+            warning "python3-systemd not available via yum, will try pip"
+        fi
+        ;;
+esac
+
+# Install remaining packages via pip (user-level, safe)
+info "Installing remaining Python packages via pip..."
+
+# Create a minimal requirements file for missing packages
+TEMP_REQ=$(mktemp)
+echo "# Minimal requirements for packages not available via system package manager" > "$TEMP_REQ"
+
+# Check what we still need
+python3 -c "
+import sys
+
+# Check for required packages
+missing = []
+
+try:
+    import dateutil.parser
+except ImportError:
+    missing.append('python-dateutil>=2.8.2')
+
+try:
+    import systemd.journal
+except ImportError:
+    missing.append('systemd-python>=234')
+
+try:
+    import requests
+except ImportError:
+    missing.append('requests>=2.25.1')
+
+try:
+    import yaml
+except ImportError:
+    missing.append('pyyaml>=5.4.1')
+
+if missing:
+    print('\\n'.join(missing))
+" >> "$TEMP_REQ"
+
+# Install missing packages with user flag
+if grep -v '^#' "$TEMP_REQ" | grep -q .; then
+    info "Installing missing core packages via pip..."
+    if pip3 install --user -r "$TEMP_REQ"; then
+        success "Core packages installed successfully"
+    else
+        warning "Some core packages failed to install. IoC-Hunter may have limited functionality."
+    fi
+else
+    success "All core packages already available"
+fi
+
+# Optional Splunk integration
+info "Checking for optional Splunk SDK..."
+if python3 -c "import splunklib.client" 2>/dev/null; then
+    success "Splunk SDK already available"
+else
+    echo ""
+    echo "Optional: Splunk integration requires splunk-sdk"
+    echo "To enable Splunk export functionality:"
+    echo "  pip3 install --user splunk-sdk"
+    echo ""
+    echo "Or create a virtual environment:"
+    echo "  python3 -m venv splunk-venv"
+    echo "  source splunk-venv/bin/activate"  
+    echo "  pip install splunk-sdk"
+    echo ""
+    info "Continuing without Splunk integration (can be added later)"
+fi
+
+# Clean up
+rm -f "$TEMP_REQ"
 
 # Verify critical imports
 info "Verifying Python package installation..."
@@ -175,25 +291,42 @@ try:
         print('✓ dateutil import successful')
     except ImportError as e:
         print(f'✗ dateutil import failed: {e}')
+        print('Install with: sudo apt install python3-dateutil (or pip3 install --user python-dateutil)')
         sys.exit(1)
     
     try:
         import systemd.journal
         print('✓ systemd import successful')
     except ImportError as e:
-        print(f'✗ systemd import failed: {e}')
-        print('Will attempt to use journalctl via subprocess')
+        print(f'! systemd import failed: {e}')
+        print('Will use journalctl subprocess fallback (functionality preserved)')
+    
+    try:
+        import requests
+        print('✓ requests import successful')
+    except ImportError as e:
+        print(f'! requests import failed: {e}')
+        print('Some export features may be limited')
+    
+    try:
+        import yaml
+        print('✓ yaml import successful')
+    except ImportError as e:
+        print(f'! yaml import failed: {e}')
+        print('Will use JSON configuration fallback')
     
     try:
         import splunklib.client
-        print('✓ splunk-sdk import successful')
+        print('✓ splunk-sdk import successful - Splunk integration available')
     except ImportError as e:
-        print(f'✗ splunk-sdk import failed: {e}')
-        print('Splunk integration will be unavailable')
+        print(f'! splunk-sdk not available: {e}')
+        print('Splunk export will be disabled (optional feature)')
 
 except Exception as e:
     print(f'✗ Critical import failed: {e}')
     sys.exit(1)
+    
+print('\\nCore functionality verified - IoC-Hunter ready to run!')
 "
 
 if [ $? -ne 0 ]; then

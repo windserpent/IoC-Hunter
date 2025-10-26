@@ -9,9 +9,9 @@ A Python-based security scanning tool designed for blue team exercises and incid
 ```bash
 # Clone and setup (30-60 seconds)
 git clone <repository-url>
-cd ioc-hunter-linux
+cd IoC-Hunter/ioc-hunter-linux
 chmod +x setup.sh
-./setup.sh
+sudo ./setup.sh
 
 # Quick security scan (requires root for full log access)
 sudo ./scripts/ioc-hunter --quick
@@ -20,7 +20,7 @@ sudo ./scripts/ioc-hunter --quick
 sudo ./scripts/ioc-hunter --full --begin "1 hour ago"
 
 # Targeted scan with export
-sudo ./scripts/ioc-hunter --ssh --privilege-escalation --export json --output incident.json
+sudo ./scripts/ioc-hunter --ssh-activity --privilege-escalation --export json --output incident.json
 ```
 
 ## Key Features
@@ -83,8 +83,19 @@ sudo dnf install python3-pip python3-systemd jq
 # RHEL/Oracle Linux:
 sudo yum install python3-pip jq
 
-# Install Python packages
-pip3 install --user -r requirements.txt
+# Install Python packages (system packages first, preferred)
+# Ubuntu/Debian:
+sudo apt install python3-dateutil python3-requests python3-yaml python3-systemd
+
+# Fedora:
+sudo dnf install python3-dateutil python3-requests python3-yaml python3-systemd
+
+# RHEL/Oracle Linux:
+sudo yum install python3-dateutil python3-requests python3-yaml
+# Note: python3-systemd may not be available, will use journalctl fallback
+
+# Optional: Splunk integration (if needed)
+pip3 install --user splunk-sdk
 
 # Make CLI executable
 chmod +x scripts/ioc-hunter
