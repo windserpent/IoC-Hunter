@@ -20,7 +20,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 # Add the package to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -43,8 +43,8 @@ class IoCHunterCLI:
     """
     
     def __init__(self):
-        self.scanner = None
-        self.logger = None
+        self.scanner: Optional[IoCScanner] = None
+        self.logger: Optional[logging.Logger] = None
     
     def create_parser(self) -> argparse.ArgumentParser:
         """Create command-line argument parser with auto-discovered options."""
@@ -240,7 +240,8 @@ Note: Root privileges are required for comprehensive log access.
     
     def check_privileges(self):
         """Check if running with sufficient privileges."""
-        if os.geteuid() != 0:
+        # Check if running as root (Unix/Linux only)
+        if hasattr(os, 'geteuid') and os.geteuid() != 0:  # type: ignore
             print("WARNING: Not running as root.")
             print("Some log sources may not be accessible without root privileges.")
             print("For comprehensive scanning, consider running with sudo.")
@@ -252,7 +253,8 @@ Note: Root privileges are required for comprehensive log access.
             self.scanner = IoCScanner(config_dir=args.config_dir)
             return True
         except Exception as e:
-            self.logger.error(f"Failed to initialize scanner: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to initialize scanner: {e}")
             print(f"Error: Failed to initialize IoC scanner: {e}")
             return False
     
@@ -261,6 +263,8 @@ Note: Root privileges are required for comprehensive log access.
         categories = []
         
         # Get all available categories
+        if not self.scanner:
+            return []
         available_categories = {cat['name']: cat for cat in self.scanner.get_available_categories()}
         
         # Check individual category flags
@@ -273,7 +277,12 @@ Note: Root privileges are required for comprehensive log access.
     
     def perform_scan(self, args: argparse.Namespace):
         """Perform the IoC scan based on arguments."""
+        assert self.scanner is not None
+        assert self.logger is not None
+
         try:
+            assert self.scanner is not None
+            assert self.logger is not None
             # Determine scan type and categories
             if args.quick:
                 self.logger.info("Performing quick scan")
@@ -428,6 +437,9 @@ Note: Root privileges are required for comprehensive log access.
     
     def export_results(self, results, args: argparse.Namespace):
         """Export scan results."""
+        assert self.scanner is not None
+        assert self.logger is not None
+
         try:
             success = self.scanner.export_results(
                 results, 
@@ -447,6 +459,8 @@ Note: Root privileges are required for comprehensive log access.
     
     def list_categories(self):
         """List available IoC categories."""
+        assert self.scanner is not None
+
         categories = self.scanner.get_available_categories()
         
         print(f"\nAvailable IoC Categories ({len(categories)} total):")
@@ -469,6 +483,8 @@ Note: Root privileges are required for comprehensive log access.
     
     def list_exporters(self):
         """List available export formats."""
+        assert self.scanner is not None
+        
         exporters = self.scanner.get_available_exporters()
         
         print(f"\nAvailable Export Formats ({len(exporters)} total):")
@@ -482,6 +498,8 @@ Note: Root privileges are required for comprehensive log access.
     
     def show_system_info(self):
         """Show system information."""
+        assert self.scanner is not None
+
         info = self.scanner.get_system_info()
         
         print(f"\nIoC-Hunter Linux System Information:")
@@ -505,6 +523,8 @@ Note: Root privileges are required for comprehensive log access.
     
     def test_log_sources(self):
         """Test log source accessibility."""
+        assert self.scanner is not None
+
         print("\nTesting Log Source Accessibility:")
         print("="*60)
         

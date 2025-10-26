@@ -154,7 +154,7 @@ class CSVExporter(BaseExporter):
             "service": "Service"
         }
         
-        return [header_mapping.get(field, field.title()) for field in self.fields]
+        return [header_mapping.get(field, field.title()) or field.title() for field in self.fields]
     
     def _event_to_csv_row(self, event: IoCEvent) -> List[str]:
         """

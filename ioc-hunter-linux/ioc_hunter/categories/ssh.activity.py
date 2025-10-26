@@ -86,6 +86,11 @@ class SSHActivity(BaseIoCCategory):
         }
         
         try:
+            # Ensure log sources are available
+            if not self.log_sources:
+                self.logger.error("Log sources not initialized")
+                return []
+            
             # Get entries from log sources
             log_entries = self.log_sources.get_entries(
                 begin_time=begin_time,
