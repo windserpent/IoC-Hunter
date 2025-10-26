@@ -554,9 +554,7 @@ Note: Root privileges are required for comprehensive log access.
             # Check privileges
             self.check_privileges()
             
-            # Handle information requests that don't need scanner
-            if parsed_args.version:
-                return 0  # Version already handled by argparse
+            # Version is handled automatically by argparse --version action
             
             # Initialize scanner
             if not self.initialize_scanner(parsed_args):

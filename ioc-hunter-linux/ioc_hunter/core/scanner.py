@@ -11,6 +11,7 @@ import logging
 import time
 import glob
 import importlib
+import importlib.util
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -186,12 +187,9 @@ class IoCScanner:
                 try:
                     module_name = f"ioc_hunter.categories.{category_file.stem}"
                     
-                    # Import the module
+                    # Import the module using importlib.import_module to preserve package context
                     if module_name not in sys.modules:
-                        spec = importlib.util.spec_from_file_location(module_name, category_file)
-                        module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
-                        sys.modules[module_name] = module
+                        module = importlib.import_module(module_name)
                     else:
                         module = sys.modules[module_name]
                     

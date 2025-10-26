@@ -1,0 +1,22 @@
+{
+  "events": [],
+  "export_metadata": {
+    "categories_scanned": [
+      "ssh_activity"
+    ],
+    "export_format": "json",
+    "export_time": "2025-10-26T07:44:06.092921",
+    "export_version": "1.0.0",
+    "scan_begin": "2025-10-26T07:24:06.073844",
+    "scan_duration_seconds": 1200.0,
+    "scan_end": "2025-10-26T07:44:06.073844",
+    "scanner_version": "1.0.0",
+    "total_events": 0
+  },
+  "summary": {
+    "category_counts": {},
+    "severity_counts": {},
+    "time_range": null,
+    "total_events": 0
+  }
+}

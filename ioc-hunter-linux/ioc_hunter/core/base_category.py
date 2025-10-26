@@ -341,7 +341,7 @@ class CategoryRegistry:
             category_name = instance.name
             
             if category_name in self._categories:
-                self.logger.warning(f"Category '{category_name}' already registered, overwriting")
+                self.logger.debug(f"Category '{category_name}' already registered, overwriting")
             
             self._categories[category_name] = category_class
             self.logger.info(f"Registered IoC category: {category_name}")

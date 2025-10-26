@@ -368,7 +368,7 @@ class ExporterRegistry:
             exporter_name = instance.name
             
             if exporter_name in self._exporters:
-                self.logger.warning(f"Exporter '{exporter_name}' already registered, overwriting")
+                self.logger.debug(f"Exporter '{exporter_name}' already registered, overwriting")
             
             self._exporters[exporter_name] = exporter_class
             self.logger.info(f"Registered exporter: {exporter_name}")

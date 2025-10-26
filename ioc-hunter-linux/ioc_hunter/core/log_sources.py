@@ -342,9 +342,13 @@ class SyslogFileSource(BaseLogSource):
     priority = 3
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__(config)
-        self.log_paths = self.config.get("paths", ["/var/log/syslog", "/var/log/messages"])
+        # Set up configuration first
+        temp_config = config or {}
+        self.log_paths = temp_config.get("paths", ["/var/log/syslog", "/var/log/messages"])
         self.available_paths = self._find_available_paths()
+        
+        # Now call parent init which will call _check_availability()
+        super().__init__(config)
     
     def get_entries(self, begin_time: datetime, end_time: datetime, 
                    filters: Optional[Dict[str, Any]] = None) -> Generator[LogEntry, None, None]:
