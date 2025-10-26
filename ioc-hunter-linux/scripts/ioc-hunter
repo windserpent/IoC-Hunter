@@ -505,12 +505,7 @@ Note: Root privileges are required for comprehensive log access.
         return filename
     
     def _handle_file_conflict(self, output_path: str, results, export_format: str) -> Optional[str]:
-        """
-        Handle file conflict with interactive user prompt.
-        
-        Returns:
-            Final output path, or None if user cancelled
-        """
+        """Handle file conflict with interactive user prompt."""
         abs_path = os.path.abspath(output_path)
         
         print(f"\nOutput file already exists: {abs_path}")
@@ -524,6 +519,13 @@ Note: Root privileges are required for comprehensive log access.
                 choice = input("Enter choice (O/R/C): ").strip().upper()
                 
                 if choice == 'O':
+                    # Delete the existing file to enable overwrite
+                    try:
+                        os.remove(output_path)
+                        print(f"Existing file removed.")
+                    except OSError as e:
+                        print(f"Error removing existing file: {e}")
+                        return None
                     return output_path
                 elif choice == 'R':
                     auto_filename = self._generate_auto_filename(results, export_format)
