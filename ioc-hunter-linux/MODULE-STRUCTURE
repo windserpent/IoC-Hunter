@@ -1,0 +1,25 @@
+ioc-hunter-linux/
+├── setup.sh                    # 30-60 second installation script
+├── requirements.txt             # Python 3.9+ compatible dependencies
+├── README.md                    # Comprehensive documentation
+├── ioc_hunter/                  # Main Python package
+│   ├── __init__.py             # Package initialization
+│   ├── core/                   # Core framework (never needs modification)
+│   │   ├── scanner.py          # Main orchestration engine
+│   │   ├── config_manager.py   # Configuration management
+│   │   ├── log_sources.py      # Unified log source interface
+│   │   ├── base_category.py    # Abstract IoC category class
+│   │   └── base_exporter.py    # Abstract exporter class
+│   ├── categories/             # IoC categories (auto-discovered)
+│   ├── exporters/             # Export formats (auto-discovered)
+│   ├── filters/               # Search and filtering
+│   └── utils/                 # Helper functions
+│       ├── time_parser.py     # Natural language time parsing
+│       └── helpers.py         # Common utilities
+├── config/                    # Configuration files
+│   ├── default_patterns.json # IoC detection patterns
+│   ├── log_sources.json      # Log source configurations
+│   ├── export_formats.json   # Export format settings
+│   └── severity_rules.json   # Severity classification
+└── scripts/
+    └── ioc-hunter            # Main CLI script
