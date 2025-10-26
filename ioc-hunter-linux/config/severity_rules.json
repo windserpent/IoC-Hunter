@@ -1,0 +1,251 @@
+{
+  "HIGH": {
+    "description": "Critical security events requiring immediate attention",
+    "patterns": [
+      "root access",
+      "privilege escalation", 
+      "brute force",
+      "successful login after failures",
+      "reverse shell",
+      "backdoor",
+      "rootkit",
+      "unsigned module",
+      "critical file modification",
+      "log clearing",
+      "history manipulation"
+    ],
+    "event_counts": {
+      "threshold": 5,
+      "window_minutes": 5,
+      "description": "5 or more similar events in 5 minutes"
+    },
+    "categories": {
+      "ssh_activity": [
+        "brute_force",
+        "port_forwarding", 
+        "successful_login_after_failures"
+      ],
+      "privilege_escalation": [
+        "sudo_to_root",
+        "setuid_modification",
+        "passwd_change",
+        "visudo_access"
+      ],
+      "account_management": [
+        "user_creation",
+        "root_password_change",
+        "suspicious_user_activity"
+      ],
+      "service_manipulation": [
+        "suspicious_service_start",
+        "critical_service_stop"
+      ],
+      "process_execution": [
+        "reverse_shell",
+        "network_scanning"
+      ],
+      "filesystem_changes": [
+        "critical_file_modification",
+        "executable_in_temp"
+      ],
+      "log_tampering": [
+        "log_clearing",
+        "history_manipulation"
+      ],
+      "cron_manipulation": [
+        "suspicious_cron_job"
+      ],
+      "kernel_modules": [
+        "unsigned_module",
+        "suspicious_module"
+      ],
+      "command_history": [
+        "destructive_command",
+        "history_clearing"
+      ]
+    },
+    "color": "red",
+    "priority": 1
+  },
+  "MEDIUM": {
+    "description": "Important security events requiring investigation",
+    "patterns": [
+      "failed login",
+      "suspicious command",
+      "file modification",
+      "service modification",
+      "network activity",
+      "reconnaissance",
+      "privilege activity"
+    ],
+    "event_counts": {
+      "threshold": 10,
+      "window_minutes": 10,
+      "description": "10 or more similar events in 10 minutes"
+    },
+    "categories": {
+      "ssh_activity": [
+        "failed_login",
+        "invalid_user"
+      ],
+      "privilege_escalation": [
+        "dangerous_sudo"
+      ],
+      "account_management": [
+        "group_modification"
+      ],
+      "service_manipulation": [
+        "service_creation",
+        "service_modification"
+      ],
+      "process_execution": [
+        "suspicious_download",
+        "interactive_shell"
+      ],
+      "network_connections": [
+        "suspicious_outbound",
+        "unusual_port_usage"
+      ],
+      "filesystem_changes": [
+        "suspicious_file_creation"
+      ],
+      "log_tampering": [
+        "log_modification"
+      ],
+      "cron_manipulation": [
+        "cron_modification",
+        "frequent_cron"
+      ],
+      "kernel_modules": [
+        "module_loading"
+      ],
+      "command_history": [
+        "network_activity",
+        "reconnaissance",
+        "privilege_activity"
+      ]
+    },
+    "color": "yellow",
+    "priority": 2
+  },
+  "LOW": {
+    "description": "Informational events for baseline monitoring",
+    "patterns": [
+      "normal login",
+      "routine operation",
+      "standard process",
+      "regular file access"
+    ],
+    "event_counts": {
+      "threshold": 50,
+      "window_minutes": 30,
+      "description": "50 or more similar events in 30 minutes"
+    },
+    "categories": {
+      "ssh_activity": [
+        "publickey_failure"
+      ]
+    },
+    "default": true,
+    "color": "white",
+    "priority": 3
+  },
+  "severity_escalation_rules": {
+    "description": "Rules for escalating severity based on context",
+    "rules": [
+      {
+        "name": "Multiple failed logins from same IP",
+        "condition": {
+          "category": "ssh_activity",
+          "event_type": "failed_login",
+          "group_by": "source_ip",
+          "count": 5,
+          "window_minutes": 5
+        },
+        "escalate_to": "HIGH",
+        "new_event_type": "brute_force"
+      },
+      {
+        "name": "Successful login after multiple failures",
+        "condition": {
+          "category": "ssh_activity",
+          "sequence": ["failed_login", "successful_login"],
+          "same_source": true,
+          "window_minutes": 10
+        },
+        "escalate_to": "HIGH",
+        "new_event_type": "successful_login_after_failures"
+      },
+      {
+        "name": "Multiple privilege escalation attempts",
+        "condition": {
+          "category": "privilege_escalation",
+          "count": 3,
+          "window_minutes": 5
+        },
+        "escalate_to": "HIGH",
+        "new_event_type": "privilege_escalation_campaign"
+      },
+      {
+        "name": "File modifications in multiple critical locations",
+        "condition": {
+          "category": "filesystem_changes",
+          "event_type": "critical_file_modification",
+          "unique_files": 3,
+          "window_minutes": 10
+        },
+        "escalate_to": "HIGH",
+        "new_event_type": "systematic_file_tampering"
+      }
+    ]
+  },
+  "time_based_severity": {
+    "description": "Adjust severity based on time of occurrence",
+    "rules": [
+      {
+        "name": "After hours activity",
+        "time_range": {
+          "start": "18:00",
+          "end": "08:00"
+        },
+        "severity_adjustment": "+1",
+        "description": "Increase severity for after-hours activity"
+      },
+      {
+        "name": "Weekend activity", 
+        "days": ["saturday", "sunday"],
+        "severity_adjustment": "+1",
+        "description": "Increase severity for weekend activity"
+      }
+    ]
+  },
+  "context_based_severity": {
+    "description": "Adjust severity based on system context",
+    "rules": [
+      {
+        "name": "Root user activity",
+        "condition": {
+          "user": "root"
+        },
+        "severity_adjustment": "+1",
+        "description": "Increase severity for root user activity"
+      },
+      {
+        "name": "System service users",
+        "condition": {
+          "user": ["daemon", "nobody", "www-data", "apache", "nginx"]
+        },
+        "severity_adjustment": "+1",
+        "description": "Increase severity for system service user activity"
+      },
+      {
+        "name": "Critical system hosts",
+        "condition": {
+          "hostname": ["splunk-server", "webmail-server", "ecommerce-server"]
+        },
+        "severity_adjustment": "+1",
+        "description": "Increase severity for critical system activity"
+      }
+    ]
+  }
+}

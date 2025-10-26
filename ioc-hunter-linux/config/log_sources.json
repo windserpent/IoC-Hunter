@@ -1,0 +1,115 @@
+{
+  "journald": {
+    "enabled": true,
+    "priority": 1,
+    "description": "systemd Journal logs (modern Linux systems)",
+    "prefer_native": true,
+    "fallback_to_subprocess": true,
+    "timeout_seconds": 60,
+    "max_entries_per_query": 10000
+  },
+  "auth_log": {
+    "enabled": true,
+    "priority": 2,
+    "description": "Authentication and authorization logs",
+    "paths": [
+      "/var/log/auth.log",
+      "/var/log/secure",
+      "/var/log/auth.log.1",
+      "/var/log/secure.1"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 100
+  },
+  "syslog_file": {
+    "enabled": true,
+    "priority": 3,
+    "description": "Traditional syslog files",
+    "paths": [
+      "/var/log/syslog",
+      "/var/log/messages",
+      "/var/log/syslog.1",
+      "/var/log/messages.1"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 500
+  },
+  "mail_logs": {
+    "enabled": true,
+    "priority": 4,
+    "description": "Mail server logs (for webmail server)",
+    "paths": [
+      "/var/log/mail.log",
+      "/var/log/maillog",
+      "/var/log/mail.info",
+      "/var/log/mail.warn",
+      "/var/log/mail.err"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 100
+  },
+  "web_logs": {
+    "enabled": true,
+    "priority": 5,
+    "description": "Web server logs (for ecommerce server)",
+    "paths": [
+      "/var/log/apache2/access.log",
+      "/var/log/apache2/error.log",
+      "/var/log/nginx/access.log",
+      "/var/log/nginx/error.log",
+      "/var/log/httpd/access_log",
+      "/var/log/httpd/error_log"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 200
+  },
+  "splunk_logs": {
+    "enabled": true,
+    "priority": 6,
+    "description": "Splunk server logs (for Oracle Linux Splunk server)",
+    "paths": [
+      "/opt/splunk/var/log/splunk/splunkd.log",
+      "/opt/splunk/var/log/splunk/web_access.log",
+      "/opt/splunk/var/log/splunk/audit.log"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 100
+  },
+  "kernel_logs": {
+    "enabled": true,
+    "priority": 7,
+    "description": "Kernel messages and system logs",
+    "paths": [
+      "/var/log/kern.log",
+      "/var/log/dmesg",
+      "/var/log/boot.log"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 50
+  },
+  "package_logs": {
+    "enabled": true,
+    "priority": 8,
+    "description": "Package management logs",
+    "paths": [
+      "/var/log/dpkg.log",
+      "/var/log/apt/history.log",
+      "/var/log/yum.log",
+      "/var/log/dnf.log",
+      "/var/log/zypper.log"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 50
+  },
+  "cron_logs": {
+    "enabled": true,
+    "priority": 9,
+    "description": "Cron job logs",
+    "paths": [
+      "/var/log/cron",
+      "/var/log/cron.log"
+    ],
+    "compressed_extensions": [".gz", ".bz2"],
+    "max_file_size_mb": 50
+  }
+}

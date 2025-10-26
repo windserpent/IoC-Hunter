@@ -1,0 +1,394 @@
+{
+  "ssh_activity": {
+    "patterns": {
+      "failed_login": [
+        "Failed password",
+        "Invalid user",
+        "authentication failure",
+        "Connection closed by authenticating user",
+        "Failed publickey",
+        "Did not receive identification string"
+      ],
+      "successful_login": [
+        "Accepted password",
+        "Accepted publickey",
+        "session opened for user"
+      ],
+      "suspicious_commands": [
+        "ssh -L",
+        "ssh -R", 
+        "ssh -D",
+        "ssh -f",
+        "ProxyCommand",
+        "LocalForward",
+        "RemoteForward"
+      ],
+      "brute_force_indicators": [
+        "maximum authentication attempts exceeded",
+        "too many authentication failures",
+        "repeated login failures"
+      ]
+    },
+    "thresholds": {
+      "failed_login_count": 5,
+      "failed_login_window_minutes": 5,
+      "brute_force_threshold": 10,
+      "brute_force_window_minutes": 10
+    },
+    "severity_mapping": {
+      "failed_login": "MEDIUM",
+      "brute_force": "HIGH",
+      "port_forwarding": "HIGH",
+      "successful_login_after_failures": "HIGH",
+      "invalid_user": "MEDIUM",
+      "publickey_failure": "LOW"
+    }
+  },
+  "privilege_escalation": {
+    "patterns": {
+      "sudo_abuse": [
+        "sudo su",
+        "sudo -i", 
+        "sudo /bin/bash",
+        "sudo /bin/sh",
+        "sudo passwd",
+        "sudo visudo"
+      ],
+      "setuid_usage": [
+        "chmod +s",
+        "chmod 4755",
+        "chmod u+s",
+        "setuid"
+      ],
+      "dangerous_sudo": [
+        "sudo rm",
+        "sudo mv",
+        "sudo chmod 777",
+        "sudo chown",
+        "sudo systemctl"
+      ],
+      "privilege_keywords": [
+        "gained administrative privileges",
+        "elevated to root",
+        "privilege escalation",
+        "became root"
+      ]
+    },
+    "severity_mapping": {
+      "sudo_to_root": "HIGH",
+      "setuid_modification": "HIGH", 
+      "dangerous_sudo": "MEDIUM",
+      "passwd_change": "HIGH",
+      "visudo_access": "HIGH"
+    }
+  },
+  "account_management": {
+    "patterns": {
+      "user_creation": [
+        "useradd",
+        "adduser",
+        "new user",
+        "user added"
+      ],
+      "user_modification": [
+        "usermod",
+        "passwd",
+        "chage",
+        "user modified"
+      ],
+      "group_changes": [
+        "groupadd",
+        "usermod -a -G",
+        "gpasswd",
+        "added to group"
+      ],
+      "suspicious_users": [
+        "nobody",
+        "daemon",
+        "bin",
+        "sys",
+        "sync",
+        "games",
+        "man",
+        "lp",
+        "mail",
+        "news",
+        "uucp",
+        "proxy",
+        "www-data",
+        "backup",
+        "list",
+        "irc",
+        "gnats"
+      ]
+    },
+    "severity_mapping": {
+      "user_creation": "HIGH",
+      "root_password_change": "HIGH",
+      "group_modification": "MEDIUM",
+      "suspicious_user_activity": "HIGH"
+    }
+  },
+  "service_manipulation": {
+    "patterns": {
+      "service_creation": [
+        "systemctl enable",
+        "systemctl start",
+        "service started",
+        "unit file created"
+      ],
+      "service_modification": [
+        "systemctl stop",
+        "systemctl disable", 
+        "systemctl mask",
+        "service stopped"
+      ],
+      "suspicious_services": [
+        "nc",
+        "netcat",
+        "telnet",
+        "rsh",
+        "rlogin",
+        "xinet"
+      ],
+      "critical_services": [
+        "sshd",
+        "systemd-logind",
+        "networking",
+        "firewalld",
+        "iptables",
+        "fail2ban"
+      ]
+    },
+    "severity_mapping": {
+      "suspicious_service_start": "HIGH",
+      "critical_service_stop": "HIGH",
+      "service_creation": "MEDIUM",
+      "service_modification": "MEDIUM"
+    }
+  },
+  "process_execution": {
+    "patterns": {
+      "suspicious_processes": [
+        "nc -l",
+        "ncat -l",
+        "/dev/tcp/",
+        "/dev/udp/",
+        "bash -i",
+        "sh -i",
+        "python -c",
+        "perl -e",
+        "ruby -e"
+      ],
+      "network_tools": [
+        "nmap",
+        "masscan",
+        "zmap",
+        "hping",
+        "tcpdump",
+        "wireshark",
+        "tshark"
+      ],
+      "download_tools": [
+        "wget",
+        "curl",
+        "fetch",
+        "lynx",
+        "links"
+      ],
+      "reverse_shells": [
+        "bash -i >& /dev/tcp/",
+        "nc -e /bin/bash",
+        "rm /tmp/f;mkfifo /tmp/f",
+        "python.*socket.*subprocess"
+      ]
+    },
+    "severity_mapping": {
+      "reverse_shell": "HIGH",
+      "network_scanning": "HIGH", 
+      "suspicious_download": "MEDIUM",
+      "interactive_shell": "MEDIUM"
+    }
+  },
+  "network_connections": {
+    "patterns": {
+      "suspicious_outbound": [
+        "connection to unknown host",
+        "outbound connection established",
+        "tcp connection opened"
+      ],
+      "port_scanning": [
+        "port scan detected",
+        "multiple connection attempts",
+        "connection refused"
+      ],
+      "unusual_ports": [
+        ":1337",
+        ":4444",
+        ":31337",
+        ":8080",
+        ":9999"
+      ]
+    },
+    "severity_mapping": {
+      "suspicious_outbound": "MEDIUM",
+      "port_scanning": "HIGH",
+      "unusual_port_usage": "MEDIUM"
+    }
+  },
+  "filesystem_changes": {
+    "patterns": {
+      "critical_files": [
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/sudoers",
+        "/etc/ssh/sshd_config",
+        "/etc/hosts",
+        "/etc/crontab"
+      ],
+      "suspicious_locations": [
+        "/tmp/",
+        "/var/tmp/",
+        "/dev/shm/",
+        "/var/www/",
+        "/usr/local/bin/",
+        "/opt/"
+      ],
+      "executable_extensions": [
+        ".sh",
+        ".py",
+        ".pl",
+        ".rb",
+        ".exe",
+        ".elf"
+      ]
+    },
+    "severity_mapping": {
+      "critical_file_modification": "HIGH",
+      "suspicious_file_creation": "MEDIUM",
+      "executable_in_temp": "HIGH"
+    }
+  },
+  "log_tampering": {
+    "patterns": {
+      "log_clearing": [
+        "log cleared",
+        "history cleared",
+        "journal vacuum",
+        "logrotate forced"
+      ],
+      "log_modification": [
+        "log file modified",
+        "wtmp modified",
+        "lastlog modified"
+      ],
+      "history_manipulation": [
+        "history -c",
+        "unset HISTFILE",
+        "HISTSIZE=0",
+        "rm.*bash_history"
+      ]
+    },
+    "severity_mapping": {
+      "log_clearing": "HIGH",
+      "history_manipulation": "HIGH",
+      "log_modification": "MEDIUM"
+    }
+  },
+  "cron_manipulation": {
+    "patterns": {
+      "cron_creation": [
+        "crontab installed",
+        "cron job added",
+        "crontab modified"
+      ],
+      "suspicious_cron": [
+        "* * * * *",
+        "/tmp/",
+        "/var/tmp/",
+        "wget",
+        "curl"
+      ],
+      "systemd_timers": [
+        "timer created",
+        "timer enabled",
+        "timer started"
+      ]
+    },
+    "severity_mapping": {
+      "suspicious_cron_job": "HIGH",
+      "cron_modification": "MEDIUM",
+      "frequent_cron": "MEDIUM"
+    }
+  },
+  "kernel_modules": {
+    "patterns": {
+      "module_loading": [
+        "insmod",
+        "modprobe",
+        "module loaded",
+        "driver loaded"
+      ],
+      "suspicious_modules": [
+        "rootkit",
+        "keylogger", 
+        "backdoor",
+        "trojan"
+      ],
+      "unsigned_modules": [
+        "unsigned module",
+        "module verification failed",
+        "tainted kernel"
+      ]
+    },
+    "severity_mapping": {
+      "unsigned_module": "HIGH",
+      "suspicious_module": "HIGH",
+      "module_loading": "MEDIUM"
+    }
+  },
+  "command_history": {
+    "patterns": {
+      "suspicious_commands": [
+        "history -c",
+        "rm -rf /",
+        "dd if=/dev/zero",
+        "mkfs",
+        "shred",
+        "wipe"
+      ],
+      "network_commands": [
+        "nc",
+        "netcat",
+        "telnet",
+        "ssh",
+        "scp",
+        "rsync"
+      ],
+      "reconnaissance": [
+        "ps aux",
+        "netstat",
+        "ss -tulpn",
+        "lsof",
+        "find / -name",
+        "locate",
+        "which",
+        "whereis"
+      ],
+      "privilege_commands": [
+        "sudo",
+        "su -",
+        "passwd",
+        "chmod +s",
+        "chown root"
+      ]
+    },
+    "severity_mapping": {
+      "destructive_command": "HIGH",
+      "history_clearing": "HIGH",
+      "network_activity": "MEDIUM",
+      "reconnaissance": "MEDIUM",
+      "privilege_activity": "MEDIUM"
+    }
+  }
+}

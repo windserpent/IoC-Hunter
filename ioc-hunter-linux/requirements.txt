@@ -1,0 +1,37 @@
+# IoC-Hunter Linux Requirements
+# Python 3.9+ compatibility ensured
+# All packages are open-source/freeware
+
+# Core dependencies
+python-dateutil>=2.8.2        # Natural language time parsing ("20 minutes ago")
+systemd-python>=234            # Native systemd/journald integration
+
+# Splunk integration (optional but recommended)
+splunk-sdk>=1.7.0             # Splunk REST API integration
+
+# Optional but useful packages (fallback if not available)
+# These will be installed if available, but not required
+requests>=2.25.1              # HTTP requests for API calls
+pyyaml>=5.4.1                 # YAML configuration file support
+
+# Development and testing (optional)
+# Uncomment these lines for development/testing
+# pytest>=6.2.0               # Unit testing framework  
+# pytest-cov>=2.12.0          # Test coverage reporting
+# black>=21.0.0                # Code formatting
+# flake8>=3.9.0                # Code linting
+
+# Notes:
+# - All packages support Python 3.9+
+# - systemd-python provides native journald access
+# - splunk-sdk enables direct Splunk integration
+# - python-dateutil handles "20 minutes ago" time parsing
+# - pyyaml allows YAML config files (JSON fallback available)
+# - requests enables HTTP-based integrations
+
+# Installation notes:
+# - Some packages may be available via system package manager
+# - Ubuntu: apt install python3-systemd python3-dateutil
+# - Fedora: dnf install python3-systemd python3-dateutil  
+# - Oracle Linux: yum install python3-systemd (if available)
+# - Fallback: pip3 install --user -r requirements.txt

@@ -1,0 +1,588 @@
+#!/usr/bin/env python3
+"""
+IoC-Hunter Linux Command Line Interface
+
+Main command-line interface for IoC-Hunter with natural language time parsing
+and auto-discovery of categories and export formats.
+
+Usage examples:
+  sudo ./ioc-hunter --quick
+  sudo ./ioc-hunter --full --begin "1 hour ago" --end "now"
+  sudo ./ioc-hunter --ssh --privesc --begin "30 minutes ago"
+  sudo ./ioc-hunter --quick --export json --output results.json
+
+Python 3.9+ compatible.
+"""
+
+import sys
+import argparse
+import logging
+import os
+from datetime import datetime
+from pathlib import Path
+
+# Add the package to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from ioc_hunter.core.scanner import IoCScanner
+    from ioc_hunter.core.base_category import category_registry
+    from ioc_hunter.core.base_exporter import exporter_registry
+    from ioc_hunter.utils.helpers import setup_logging
+    from ioc_hunter import VERSION_INFO
+except ImportError as e:
+    print(f"Error importing IoC-Hunter modules: {e}")
+    print("Please ensure IoC-Hunter is properly installed.")
+    sys.exit(1)
+
+
+class IoCHunterCLI:
+    """
+    Command-line interface for IoC-Hunter Linux.
+    """
+    
+    def __init__(self):
+        self.scanner = None
+        self.logger = None
+    
+    def create_parser(self) -> argparse.ArgumentParser:
+        """Create command-line argument parser with auto-discovered options."""
+        parser = argparse.ArgumentParser(
+            description="IoC-Hunter Linux - Comprehensive IoC Detection for Linux Systems",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=self._get_epilog()
+        )
+        
+        # Version information
+        parser.add_argument(
+            "--version", 
+            action="version", 
+            version=f"IoC-Hunter Linux v{VERSION_INFO['version']}"
+        )
+        
+        # Scan modes
+        scan_group = parser.add_argument_group("Scan Modes")
+        scan_group.add_argument(
+            "--quick", 
+            action="store_true",
+            help="Quick scan (Tier 1 categories, ~30-60 seconds)"
+        )
+        scan_group.add_argument(
+            "--full", 
+            action="store_true",
+            help="Full comprehensive scan (all categories, ~60-120 seconds)"
+        )
+        
+        # Time range options
+        time_group = parser.add_argument_group("Time Range Options")
+        time_group.add_argument(
+            "--begin", 
+            type=str,
+            help='Scan start time (e.g., "20 minutes ago", "2025-10-24 10:00", "1 hour ago")'
+        )
+        time_group.add_argument(
+            "--end", 
+            type=str,
+            help='Scan end time (e.g., "now", "2025-10-24 11:00", "30 minutes ago")'
+        )
+        
+        # Individual categories (auto-discovered)
+        self._add_category_arguments(parser)
+        
+        # Output options
+        output_group = parser.add_argument_group("Output Options")
+        output_group.add_argument(
+            "--table", 
+            action="store_true",
+            help="Display results in table format"
+        )
+        output_group.add_argument(
+            "--export", 
+            type=str, 
+            choices=self._get_export_formats(),
+            help="Export format"
+        )
+        output_group.add_argument(
+            "--output", 
+            type=str,
+            help="Output file path (auto-generated if not specified)"
+        )
+        output_group.add_argument(
+            "--severity", 
+            type=str, 
+            choices=["HIGH", "MEDIUM", "LOW"],
+            help="Filter by severity level"
+        )
+        
+        # Advanced options
+        advanced_group = parser.add_argument_group("Advanced Options")
+        advanced_group.add_argument(
+            "--config-dir", 
+            type=str,
+            help="Custom configuration directory"
+        )
+        advanced_group.add_argument(
+            "--log-level", 
+            type=str, 
+            choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+            default="INFO",
+            help="Logging level (default: INFO)"
+        )
+        advanced_group.add_argument(
+            "--log-file", 
+            type=str,
+            help="Log to file (optional)"
+        )
+        
+        # Information options
+        info_group = parser.add_argument_group("Information")
+        info_group.add_argument(
+            "--list-categories", 
+            action="store_true",
+            help="List available IoC categories"
+        )
+        info_group.add_argument(
+            "--list-exporters", 
+            action="store_true",
+            help="List available export formats"
+        )
+        info_group.add_argument(
+            "--system-info", 
+            action="store_true",
+            help="Show system information and status"
+        )
+        info_group.add_argument(
+            "--test-sources", 
+            action="store_true",
+            help="Test log source accessibility"
+        )
+        
+        return parser
+    
+    def _add_category_arguments(self, parser: argparse.ArgumentParser):
+        """Add category-specific arguments based on auto-discovery."""
+        try:
+            # Create a temporary scanner to discover categories
+            temp_scanner = IoCScanner()
+            categories = temp_scanner.get_available_categories()
+            
+            if categories:
+                category_group = parser.add_argument_group("Individual Categories")
+                
+                for category in categories:
+                    # Convert category name to CLI argument
+                    arg_name = f"--{category['name'].replace('_', '-')}"
+                    
+                    category_group.add_argument(
+                        arg_name,
+                        action="store_true",
+                        help=f"{category['display_name']} (Tier {category['tier']})"
+                    )
+        
+        except Exception as e:
+            # If discovery fails, just continue without category arguments
+            logging.warning(f"Could not auto-discover categories: {e}")
+    
+    def _get_export_formats(self) -> List[str]:
+        """Get available export formats."""
+        try:
+            # Create a temporary scanner to discover exporters
+            temp_scanner = IoCScanner()
+            exporters = temp_scanner.get_available_exporters()
+            return [exp['name'] for exp in exporters]
+        except Exception:
+            # Fallback to common formats
+            return ['csv', 'json', 'table']
+    
+    def _get_epilog(self) -> str:
+        """Get help epilog with examples."""
+        return """
+Examples:
+  sudo ./ioc-hunter --quick
+    Quick scan of last 20 minutes (Tier 1 categories)
+  
+  sudo ./ioc-hunter --full --begin "1 hour ago"
+    Full scan of last hour (all categories)
+  
+  sudo ./ioc-hunter --ssh --privilege-escalation --begin "30 minutes ago"
+    Targeted scan of specific categories
+  
+  sudo ./ioc-hunter --quick --export json --output incident.json
+    Quick scan with JSON export
+  
+  sudo ./ioc-hunter --full --begin "2025-10-24 09:00" --end "2025-10-24 17:00"
+    Full scan of specific time period
+  
+  sudo ./ioc-hunter --list-categories
+    Show available IoC categories
+  
+  sudo ./ioc-hunter --system-info
+    Show system status and configuration
+
+Time Format Examples:
+  "20 minutes ago", "1 hour ago", "2 days ago"
+  "2025-10-24 10:30:00", "Oct 24 2025 10:30AM"
+  "yesterday", "today", "now"
+
+Note: Root privileges are required for comprehensive log access.
+"""
+    
+    def parse_arguments(self, args=None) -> argparse.Namespace:
+        """Parse command-line arguments."""
+        parser = self.create_parser()
+        return parser.parse_args(args)
+    
+    def setup_logging(self, args: argparse.Namespace):
+        """Setup logging configuration."""
+        setup_logging(args.log_level, args.log_file)
+        self.logger = logging.getLogger(__name__)
+    
+    def check_privileges(self):
+        """Check if running with sufficient privileges."""
+        if os.geteuid() != 0:
+            print("WARNING: Not running as root.")
+            print("Some log sources may not be accessible without root privileges.")
+            print("For comprehensive scanning, consider running with sudo.")
+            print()
+    
+    def initialize_scanner(self, args: argparse.Namespace) -> bool:
+        """Initialize the IoC scanner."""
+        try:
+            self.scanner = IoCScanner(config_dir=args.config_dir)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize scanner: {e}")
+            print(f"Error: Failed to initialize IoC scanner: {e}")
+            return False
+    
+    def determine_scan_categories(self, args: argparse.Namespace) -> List[str]:
+        """Determine which categories to scan based on arguments."""
+        categories = []
+        
+        # Get all available categories
+        available_categories = {cat['name']: cat for cat in self.scanner.get_available_categories()}
+        
+        # Check individual category flags
+        for category_name in available_categories.keys():
+            arg_name = category_name.replace('_', '-')
+            if hasattr(args, arg_name.replace('-', '_')) and getattr(args, arg_name.replace('-', '_')):
+                categories.append(category_name)
+        
+        return categories
+    
+    def perform_scan(self, args: argparse.Namespace):
+        """Perform the IoC scan based on arguments."""
+        try:
+            # Determine scan type and categories
+            if args.quick:
+                self.logger.info("Performing quick scan")
+                results = self.scanner.quick_scan(args.begin, args.end)
+            elif args.full:
+                self.logger.info("Performing full scan")
+                results = self.scanner.full_scan(args.begin, args.end)
+            else:
+                # Targeted scan
+                categories = self.determine_scan_categories(args)
+                if not categories:
+                    print("Error: No categories specified for targeted scan.")
+                    print("Use --quick, --full, or specify individual categories.")
+                    print("Run with --list-categories to see available options.")
+                    return False
+                
+                self.logger.info(f"Performing targeted scan: {', '.join(categories)}")
+                results = self.scanner.scan(categories=categories, begin_time=args.begin, end_time=args.end)
+            
+            # Display results
+            self.display_results(results, args)
+            
+            # Export if requested
+            if args.export:
+                self.export_results(results, args)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Scan failed: {e}")
+            print(f"Error: Scan failed: {e}")
+            return False
+    
+    def display_results(self, results, args: argparse.Namespace):
+        """Display scan results."""
+        summary = results.get_summary()
+        
+        # Display header
+        print(f"\n{'='*60}")
+        print(f"IoC-Hunter Linux Scan Results")
+        print(f"{'='*60}")
+        
+        # Display scan info
+        print(f"Scan Mode: {summary['scan_mode'].upper()}")
+        print(f"Time Range: {summary['time_range']['begin']} to {summary['time_range']['end']}")
+        print(f"Duration: {summary['time_range']['duration_minutes']:.1f} minutes")
+        print(f"Categories: {', '.join(summary['categories_scanned'])}")
+        print(f"Scan Time: {summary['scan_performance']['duration_seconds']:.1f} seconds")
+        print()
+        
+        # Display summary statistics
+        print(f"Total Events Found: {summary['total_events']}")
+        if summary['total_events'] > 0:
+            print(f"  HIGH Severity: {summary['severity_breakdown']['HIGH']}")
+            print(f"  MEDIUM Severity: {summary['severity_breakdown']['MEDIUM']}")
+            print(f"  LOW Severity: {summary['severity_breakdown']['LOW']}")
+            print()
+        
+        # Display errors if any
+        if summary['errors'] > 0:
+            print(f"Errors Encountered: {summary['errors']}")
+            for error in results.errors:
+                print(f"  - {error}")
+            print()
+        
+        # Display events
+        if summary['total_events'] > 0:
+            self.display_events(results, args)
+        else:
+            print("No IoCs detected in the specified time range.")
+    
+    def display_events(self, results, args: argparse.Namespace):
+        """Display individual events."""
+        events = results.events
+        
+        # Apply severity filter if specified
+        if args.severity:
+            events = [e for e in events if e.severity == args.severity.upper()]
+            if not events:
+                print(f"No events found with {args.severity} severity.")
+                return
+        
+        # Sort events by timestamp
+        events.sort(key=lambda e: e.timestamp)
+        
+        if args.table:
+            self.display_events_table(events)
+        else:
+            self.display_events_list(events)
+    
+    def display_events_table(self, events):
+        """Display events in table format."""
+        if not events:
+            return
+        
+        # Table headers
+        headers = ["Time", "Severity", "Category", "Details"]
+        col_widths = [19, 8, 20, 50]
+        
+        # Print header
+        header_line = " | ".join(h.ljust(w) for h, w in zip(headers, col_widths))
+        print(header_line)
+        print("-" * len(header_line))
+        
+        # Print events
+        for event in events:
+            time_str = event.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Truncate long details
+            details = event.details
+            if len(details) > col_widths[3]:
+                details = details[:col_widths[3]-3] + "..."
+            
+            row = [
+                time_str,
+                event.severity,
+                event.category,
+                details
+            ]
+            
+            row_line = " | ".join(str(val).ljust(w) for val, w in zip(row, col_widths))
+            
+            # Color coding by severity
+            if event.severity == "HIGH":
+                print(f"\033[91m{row_line}\033[0m")  # Red
+            elif event.severity == "MEDIUM":
+                print(f"\033[93m{row_line}\033[0m")  # Yellow
+            else:
+                print(row_line)  # Normal
+    
+    def display_events_list(self, events):
+        """Display events in detailed list format."""
+        for i, event in enumerate(events, 1):
+            severity_color = {
+                "HIGH": "\033[91m",    # Red
+                "MEDIUM": "\033[93m",  # Yellow
+                "LOW": "\033[0m"       # Normal
+            }
+            
+            color = severity_color.get(event.severity, "\033[0m")
+            reset = "\033[0m"
+            
+            print(f"{color}[{i}] {event.severity} - {event.category}{reset}")
+            print(f"    Time: {event.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"    Source: {event.source}")
+            print(f"    Details: {event.details}")
+            
+            if event.metadata:
+                print(f"    Metadata: {event.metadata}")
+            
+            print()
+    
+    def export_results(self, results, args: argparse.Namespace):
+        """Export scan results."""
+        try:
+            success = self.scanner.export_results(
+                results, 
+                args.export, 
+                args.output
+            )
+            
+            if success:
+                output_path = args.output or f"ioc_hunter_results.{args.export}"
+                print(f"Results exported to: {output_path}")
+            else:
+                print("Export failed. Check logs for details.")
+                
+        except Exception as e:
+            self.logger.error(f"Export error: {e}")
+            print(f"Export error: {e}")
+    
+    def list_categories(self):
+        """List available IoC categories."""
+        categories = self.scanner.get_available_categories()
+        
+        print(f"\nAvailable IoC Categories ({len(categories)} total):")
+        print("="*60)
+        
+        # Group by tier
+        tiers = {}
+        for cat in categories:
+            tier = cat['tier']
+            if tier not in tiers:
+                tiers[tier] = []
+            tiers[tier].append(cat)
+        
+        for tier in sorted(tiers.keys()):
+            print(f"\nTier {tier} Categories:")
+            for cat in tiers[tier]:
+                arg_name = f"--{cat['name'].replace('_', '-')}"
+                print(f"  {arg_name.ljust(25)} {cat['display_name']}")
+                print(f"  {' '*25} {cat['description']}")
+    
+    def list_exporters(self):
+        """List available export formats."""
+        exporters = self.scanner.get_available_exporters()
+        
+        print(f"\nAvailable Export Formats ({len(exporters)} total):")
+        print("="*60)
+        
+        for exp in exporters:
+            print(f"  {exp['name'].ljust(15)} {exp['display_name']}")
+            print(f"  {' '*15} {exp['description']}")
+            print(f"  {' '*15} File extension: {exp['file_extension']}")
+            print()
+    
+    def show_system_info(self):
+        """Show system information."""
+        info = self.scanner.get_system_info()
+        
+        print(f"\nIoC-Hunter Linux System Information:")
+        print("="*60)
+        print(f"Scanner Version: {info['scanner_version']}")
+        print(f"Python Version: {info['python_version'].split()[0]}")
+        print(f"Available Categories: {info['available_categories']}")
+        print(f"Available Exporters: {info['available_exporters']}")
+        print()
+        
+        print("Configuration:")
+        for key, value in info['configuration'].items():
+            print(f"  {key}: {value}")
+        print()
+        
+        print("Log Sources:")
+        for source in info['log_sources']:
+            status = "✓" if source['accessible'] else "✗"
+            print(f"  {status} {source['display_name']} ({source['name']})")
+            print(f"    {source['description']}")
+    
+    def test_log_sources(self):
+        """Test log source accessibility."""
+        print("\nTesting Log Source Accessibility:")
+        print("="*60)
+        
+        results = self.scanner.log_sources.test_sources()
+        
+        for source_name, accessible in results.items():
+            status = "✓ ACCESSIBLE" if accessible else "✗ NOT ACCESSIBLE"
+            print(f"  {source_name}: {status}")
+        
+        accessible_count = sum(1 for accessible in results.values() if accessible)
+        print(f"\nTotal: {accessible_count}/{len(results)} sources accessible")
+        
+        if accessible_count == 0:
+            print("\nWARNING: No log sources are accessible!")
+            print("This may be due to insufficient privileges or missing log files.")
+            print("Try running with sudo for better log access.")
+    
+    def run(self, args=None) -> int:
+        """Main entry point for CLI."""
+        try:
+            # Parse arguments
+            parsed_args = self.parse_arguments(args)
+            
+            # Setup logging
+            self.setup_logging(parsed_args)
+            
+            # Check privileges
+            self.check_privileges()
+            
+            # Handle information requests that don't need scanner
+            if parsed_args.version:
+                return 0  # Version already handled by argparse
+            
+            # Initialize scanner
+            if not self.initialize_scanner(parsed_args):
+                return 1
+            
+            # Handle information requests
+            if parsed_args.list_categories:
+                self.list_categories()
+                return 0
+            
+            if parsed_args.list_exporters:
+                self.list_exporters()
+                return 0
+            
+            if parsed_args.system_info:
+                self.show_system_info()
+                return 0
+            
+            if parsed_args.test_sources:
+                self.test_log_sources()
+                return 0
+            
+            # Perform scan
+            if not (parsed_args.quick or parsed_args.full or self.determine_scan_categories(parsed_args)):
+                print("Error: No scan mode specified.")
+                print("Use --quick, --full, or specify individual categories.")
+                print("Run with --help for usage information.")
+                return 1
+            
+            success = self.perform_scan(parsed_args)
+            return 0 if success else 1
+            
+        except KeyboardInterrupt:
+            print("\nScan interrupted by user.")
+            return 130
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Unexpected error: {e}")
+            print(f"Unexpected error: {e}")
+            return 1
+
+
+def main():
+    """Main entry point."""
+    cli = IoCHunterCLI()
+    return cli.run()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

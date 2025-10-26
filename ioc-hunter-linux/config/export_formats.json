@@ -1,0 +1,79 @@
+{
+  "csv": {
+    "enabled": true,
+    "description": "Comma-separated values format for spreadsheet analysis",
+    "fields": [
+      "timestamp",
+      "severity", 
+      "category",
+      "event_type",
+      "source",
+      "details"
+    ],
+    "delimiter": ",",
+    "include_headers": true,
+    "quote_character": "\"",
+    "escape_character": "\\",
+    "date_format": "%Y-%m-%d %H:%M:%S"
+  },
+  "json": {
+    "enabled": true,
+    "description": "JSON format for structured data and automation",
+    "pretty_print": true,
+    "include_metadata": true,
+    "include_raw_logs": false,
+    "date_format": "iso",
+    "compression": false
+  },
+  "splunk": {
+    "enabled": true,
+    "description": "Splunk-ready format for SIEM integration",
+    "default_index": "ioc_hunter",
+    "default_sourcetype": "linux_ioc",
+    "include_raw_log": true,
+    "timestamp_field": "timestamp",
+    "severity_field": "severity",
+    "category_field": "category",
+    "batch_size": 100,
+    "connection_timeout": 30
+  },
+  "timeline": {
+    "enabled": true,
+    "description": "Chronological timeline format for incident analysis",
+    "sort_by": "timestamp",
+    "group_by_category": false,
+    "include_metadata": true,
+    "time_format": "%Y-%m-%d %H:%M:%S",
+    "show_duration": true
+  },
+  "syslog": {
+    "enabled": true,
+    "description": "Standard syslog format for SIEM ingestion",
+    "facility": "local0",
+    "severity_mapping": {
+      "HIGH": "error",
+      "MEDIUM": "warning", 
+      "LOW": "info"
+    },
+    "hostname": "ioc-hunter",
+    "tag": "IoC-Hunter",
+    "include_structured_data": true
+  },
+  "markdown": {
+    "enabled": true,
+    "description": "Human-readable report format for documentation",
+    "include_summary": true,
+    "include_charts": false,
+    "group_by_category": true,
+    "show_metadata": false,
+    "table_format": true
+  },
+  "xml": {
+    "enabled": false,
+    "description": "XML format for legacy system integration",
+    "root_element": "ioc_scan_results",
+    "event_element": "ioc_event",
+    "include_attributes": true,
+    "pretty_print": true
+  }
+}

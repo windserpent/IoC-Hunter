@@ -1,0 +1,27 @@
+IoC-Hunter/
+├── IoC-Hunter.psd1              # Module manifest
+├── IoC-Hunter.psm1              # Main module file
+├── Data/
+│   └── DefaultPatterns.json     # Configurable 
+├── Functions/
+│   ├── Private/
+│   │   ├── New-ForensicData.ps1 # Helper functions
+│   │   └── Format-IoCOutput.ps1
+│   └── Public/
+│       ├── Get-IoCs.ps1         # Main detection function
+│       ├── Save-IoCs.ps1        # Persistence functions
+│       ├── Import-IoCs.ps1
+│       ├── Search-IoCs.ps1      # Analysis functions
+│       ├── Get-IoCSummary.ps1
+│       ├── Compare-IoCs.ps1
+│       ├── Export-IoCs.ps1      # Export functions
+│       └── Get-IoCTimeline.ps1
+├── Tests/                   # ← Run tests from here!
+│   ├── Run-AllTests.ps1
+│   ├── Test-IoCCategories.ps1
+│   ├── Test-ModuleBasics.ps1
+│   ├── Test-ScanModes.ps1
+│   ├── Test-StressAndErrors.ps1
+│   ├── TEST-USAGE-GUIDE.md
+│   └── Test-WorkflowIntegration.ps1
+└── README.md
