@@ -380,10 +380,10 @@ fi
 info "Running setup verification..."
 if python3 -c "
 import sys
-sys.path.insert(0, '.')
+sys.path.insert(0, '$PROJECT_ROOT')
 from ioc_hunter.core.scanner import IoCScanner
 scanner = IoCScanner()
-print('✓ IoC-Hunter framework initialization successful')
+print('IoC-Hunter framework initialization successful')
 "; then
     success "Framework verification passed"
 else
