@@ -5,6 +5,10 @@
 
 set -e  # Exit on any error
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
 echo "================================================================"
 echo "             IoC-Hunter Linux Setup"
 echo "================================================================"
@@ -336,12 +340,12 @@ fi
 
 # Make CLI script executable
 info "Setting up CLI script..."
-chmod +x scripts/ioc-hunter
+chmod +x "$PROJECT_ROOT/scripts/ioc-hunter"
 
 # Create symlink for system-wide access (optional)
 if [[ $EUID -eq 0 ]] || sudo -n true 2>/dev/null; then
     info "Creating system-wide symlink..."
-    sudo ln -sf "$(pwd)/scripts/ioc-hunter" /usr/local/bin/ioc-hunter 2>/dev/null || true
+    sudo ln -sf "$PROJECT_ROOT/scripts/ioc-hunter" /usr/local/bin/ioc-hunter 2>/dev/null || true
 fi
 
 # Verify access to key log sources
@@ -394,13 +398,18 @@ echo "================================================================"
 echo ""
 echo "Quick Start:"
 echo "  # Quick scan (requires root for full functionality)"
-echo "  sudo ./scripts/ioc-hunter --quick"
-echo ""
-echo "  # Or use system-wide command (if symlink created)"
-echo "  sudo ioc-hunter --quick"
+if command -v ioc-hunter >/dev/null 2>&1; then
+    echo "  sudo ioc-hunter --quick"
+else
+    echo "  sudo $PROJECT_ROOT/scripts/ioc-hunter --quick"
+fi
 echo ""
 echo "  # Help and available options"
-echo "  ./scripts/ioc-hunter --help"
+if command -v ioc-hunter >/dev/null 2>&1; then
+    echo "  ioc-hunter --help"
+else
+    echo "  $PROJECT_ROOT/scripts/ioc-hunter --help"
+fi
 echo ""
 echo "Documentation:"
 echo "  README.md           - Overview and examples"
@@ -410,6 +419,5 @@ echo ""
 echo "Important Notes:"
 echo "  - Root privileges required for comprehensive log access"
 echo "  - Default scan window: 20 minutes"
-echo "  - Tested on Ubuntu 24.04.3, Fedora 42, Oracle Linux 9.2"
 echo ""
 echo "================================================================"
