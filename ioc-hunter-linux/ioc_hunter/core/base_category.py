@@ -94,9 +94,9 @@ class BaseIoCCategory(ABC):
     """
     
     # Category metadata - must be defined by subclasses
-    name: str = None              # Category name (e.g., "ssh_activity")
-    display_name: str = None      # Human-readable name (e.g., "SSH Suspicious Activity")
-    description: str = None       # Category description
+    name: Optional[str] = None              # Category name (e.g., "ssh_activity")
+    display_name: Optional[str] = None      # Human-readable name (e.g., "SSH Suspicious Activity")
+    description: Optional[str] = None       # Category description
     version: str = "1.0.0"       # Category version
     tier: int = 1                # Category tier (1=critical, 2=important, 3=optional)
     

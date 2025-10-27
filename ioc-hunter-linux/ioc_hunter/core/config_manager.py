@@ -270,7 +270,9 @@ class ConfigManager:
         """Get configuration for a specific IoC category."""
         # Try category-specific config first
         try:
-            return self.load_config(f"category_{category_name}")
+            category_config = self.load_config(f"category_{category_name}")
+            if category_config:  # Only return if not empty
+                return category_config
         except FileNotFoundError:
             pass
         

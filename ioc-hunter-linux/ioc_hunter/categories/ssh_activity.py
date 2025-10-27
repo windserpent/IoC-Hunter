@@ -21,8 +21,7 @@ from ..utils.helpers import extract_ip_addresses
 
 
 class SSHActivity(BaseIoCCategory):
-    """
-    SSH Suspicious Activity Detection Category.
+    """.
     
     Detects:
     - Failed login attempts and brute force attacks
