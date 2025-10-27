@@ -54,6 +54,13 @@ class PrivilegeEscalation(BaseIoCCategory):
             "setuid_changes_threshold": 2
         })
         
+        # Debug pattern loading
+        if self.patterns:
+            pattern_types = self.patterns.get("patterns", {})
+            self.logger.info(f"Loaded {len(pattern_types)} pattern types: {list(pattern_types.keys())}")
+        else:
+            self.logger.warning("No patterns loaded from configuration")
+        
         # Tracking for correlation analysis
         self.sudo_events = defaultdict(list)  # user -> list of (timestamp, command)
         self.setuid_changes = defaultdict(list)  # user -> list of (timestamp, file, operation)
@@ -65,7 +72,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         self.custom_sudo_logs = []
         self._discover_sudo_log_paths()
         
-        self.logger.info(f"Initialized Privilege Escalation scanner with {len(self.patterns)} pattern categories")
+        self.logger.info(f"Initialized Privilege Escalation scanner")
         if self.custom_sudo_logs:
             self.logger.info(f"Discovered custom sudo log paths: {self.custom_sudo_logs}")
     
@@ -181,8 +188,6 @@ class PrivilegeEscalation(BaseIoCCategory):
                         log_entries.extend(custom_entries)
                     except Exception as e:
                         self.logger.warning(f"Failed to read custom sudo log {custom_log}: {e}")
-            
-            self.logger.info(f"Processing {len(log_entries)} log entries for privilege escalation")
             
             # Process each log entry
             for entry in log_entries:
