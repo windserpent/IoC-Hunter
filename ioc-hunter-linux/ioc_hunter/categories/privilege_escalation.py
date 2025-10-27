@@ -193,10 +193,11 @@ class PrivilegeEscalation(BaseIoCCategory):
             for entry in log_entries:
                 processed_count += 1
                 
-                # Extract basic info
-                timestamp = entry.get('timestamp', datetime.now())
-                message = entry.get('message', '')
-                source = entry.get('source', 'unknown')
+                # Extract basic info from LogEntry object
+                timestamp = entry.timestamp
+                message = entry.message
+                source = entry.source
+                raw_log = entry.raw_line
                 
                 # Skip empty messages
                 if not message.strip():
@@ -326,7 +327,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return None
     
-    def _detect_sudo_abuse(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_sudo_abuse(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect dangerous sudo usage patterns."""
         events = []
         
@@ -365,7 +366,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'command': command,
@@ -395,7 +396,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'command': command,
@@ -409,7 +410,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return events
     
-    def _detect_setuid_modifications(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_setuid_modifications(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect setuid/setgid binary modifications."""
         events = []
         
@@ -436,7 +437,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'target_file': target_file,
@@ -455,7 +456,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return events
     
-    def _detect_password_changes(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_password_changes(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect password change events, especially for root."""
         events = []
         
@@ -490,7 +491,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'target_user': target_user,
@@ -508,7 +509,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return events
     
-    def _detect_visudo_access(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_visudo_access(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect access to sudoers file via visudo or direct editing."""
         events = []
         
@@ -536,7 +537,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'indicator_matched': indicator,
@@ -549,7 +550,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return events
     
-    def _detect_capability_changes(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_capability_changes(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect Linux capability changes (enhanced feature)."""
         events = []
         
@@ -589,7 +590,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     source=source,
                     event_type=event_type,
                     details=details,
-                    raw_log=entry.get('raw_log', message),
+                    raw_log=entry.raw_line,
                     metadata={
                         'user': user,
                         'capability': capability,
@@ -609,7 +610,7 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         return events
     
-    def _detect_suid_binary_usage(self, timestamp: datetime, message: str, source: str, entry: Dict) -> List[IoCEvent]:
+    def _detect_suid_binary_usage(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
         """Detect SUID/SGID binary usage patterns (enhanced feature)."""
         events = []
         
@@ -644,7 +645,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                         source=source,
                         event_type=event_type,
                         details=details,
-                        raw_log=entry.get('raw_log', message),
+                        raw_log=entry.raw_line,
                         metadata={
                             'user': user,
                             'binary': binary,
