@@ -381,17 +381,17 @@ class SSHActivity(BaseIoCCategory):
     
     def _is_failed_login(self, message: str) -> bool:
         """Check if message indicates a failed login."""
-        failed_patterns = self.patterns.get("failed_login", [])
+        failed_patterns = self.patterns.get("patterns", {}).get("failed_login", [])
         return any(pattern.lower() in message for pattern in failed_patterns)
     
     def _is_successful_login(self, message: str) -> bool:
         """Check if message indicates a successful login."""
-        success_patterns = self.patterns.get("successful_login", [])
+        success_patterns = self.patterns.get("patterns", {}).get("successful_login", [])
         return any(pattern.lower() in message for pattern in success_patterns)
     
     def _is_port_forwarding(self, message: str) -> bool:
         """Check if message indicates port forwarding."""
-        forwarding_patterns = self.patterns.get("suspicious_commands", [])
+        forwarding_patterns = self.patterns.get("patterns", {}).get("suspicious_commands", [])
         return any(pattern.lower() in message for pattern in forwarding_patterns)
     
     def _is_connection_anomaly(self, message: str) -> bool:

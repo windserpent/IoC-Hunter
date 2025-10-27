@@ -189,7 +189,7 @@ class BaseIoCCategory(ABC):
             Dictionary of detection patterns
         """
         if self.config_manager:
-            return self.config_manager.get_category_config(self.name).get("patterns", {})
+            return self.config_manager.get_category_config(self.name)
         return {}
     
     def get_severity_mapping(self) -> Dict[str, str]:
