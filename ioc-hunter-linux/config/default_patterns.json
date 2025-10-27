@@ -121,6 +121,11 @@
       "passwd_change": "HIGH",
       "visudo_access": "HIGH",
       "suid_discovery": "MEDIUM"
+    },
+    "thresholds": {
+      "sudo_failure_threshold": 3,
+      "sudo_failure_window_minutes": 5,
+      "setuid_changes_threshold": 2
     }
   },
   "account_management": {
@@ -205,6 +210,12 @@
       "suspicious_user_activity": "HIGH",
       "shadow_access": "HIGH",
       "user_deletion": "MEDIUM"
+    },
+    "thresholds": {
+      "failed_login_threshold": 5,
+      "failed_login_window_minutes": 10,
+      "rapid_user_changes_threshold": 3,
+      "rapid_user_window_minutes": 5
     }
   },
   "service_manipulation": {
@@ -395,6 +406,12 @@
       "interactive_shell": "MEDIUM",
       "file_transfer": "MEDIUM",
       "persistence_attempt": "HIGH"
+    },
+    "thresholds": {
+      "rapid_execution_threshold": 5,
+      "rapid_execution_window_minutes": 2,
+      "network_tool_threshold": 3,
+      "download_threshold": 5
     }
   },
   "network_connections": {
@@ -436,6 +453,12 @@
       "port_scanning": "HIGH",
       "unusual_port_usage": "MEDIUM",
       "tor_usage": "HIGH"
+    },
+    "thresholds": {
+      "suspicious_outbound_threshold": 10,
+      "port_scan_threshold": 20,
+      "connection_window_minutes": 5,
+      "unusual_port_threshold": 5
     }
   },
   "filesystem_changes": {
@@ -484,6 +507,12 @@
       "suspicious_file_creation": "MEDIUM",
       "executable_in_temp": "HIGH",
       "hidden_file_creation": "MEDIUM"
+    },
+    "thresholds": {
+      "critical_file_changes_threshold": 3,
+      "suspicious_file_threshold": 10,
+      "file_monitoring_window_minutes": 10,
+      "executable_creation_threshold": 5
     }
   },
   "log_tampering": {
@@ -518,6 +547,11 @@
       "log_clearing": "HIGH",
       "history_manipulation": "HIGH",
       "log_modification": "MEDIUM"
+    },
+    "thresholds": {
+      "log_clearing_threshold": 2,
+      "history_manipulation_threshold": 3,
+      "log_modification_window_minutes": 15
     }
   },
   "cron_manipulation": {
@@ -552,6 +586,11 @@
       "cron_modification": "MEDIUM",
       "frequent_cron": "MEDIUM",
       "systemd_timer": "HIGH"
+    },
+    "thresholds": {
+      "cron_modification_threshold": 3,
+      "suspicious_cron_threshold": 1,
+      "cron_frequency_threshold": 5
     }
   },
   "kernel_modules": {
@@ -583,6 +622,11 @@
       "unsigned_module": "HIGH",
       "suspicious_module": "HIGH",
       "module_loading": "MEDIUM"
+    },
+    "thresholds": {
+      "module_loading_threshold": 5,
+      "unsigned_module_threshold": 1,
+      "module_window_minutes": 10
     }
   },
   "command_history": {
@@ -637,6 +681,12 @@
       "network_activity": "MEDIUM",
       "reconnaissance": "MEDIUM",
       "privilege_activity": "MEDIUM"
+    },
+    "thresholds": {
+      "suspicious_command_threshold": 5,
+      "reconnaissance_threshold": 10,
+      "privilege_command_threshold": 3,
+      "command_analysis_window_minutes": 30
     }
   }
 }
