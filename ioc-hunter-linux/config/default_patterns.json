@@ -123,8 +123,8 @@
       "suid_discovery": "MEDIUM"
     },
     "thresholds": {
-      "sudo_failure_threshold": 3,
-      "sudo_failure_window_minutes": 5,
+      "sudo_abuse_threshold": 3,
+      "rapid_escalation_window_minutes": 5,
       "setuid_changes_threshold": 2
     }
   },
@@ -212,10 +212,11 @@
       "user_deletion": "MEDIUM"
     },
     "thresholds": {
-      "failed_login_threshold": 5,
-      "failed_login_window_minutes": 10,
-      "rapid_user_changes_threshold": 3,
-      "rapid_user_window_minutes": 5
+      "brute_force_threshold": 5,
+      "brute_force_window_minutes": 10,
+      "rapid_account_creation_threshold": 3,
+      "rapid_account_window_minutes": 5,
+      "auth_failure_threshold": 10
     }
   },
   "service_manipulation": {
