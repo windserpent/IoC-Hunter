@@ -57,14 +57,27 @@ class AccountManagement(BaseIoCCategory):
             "auth_failure_threshold": 10
         })
         
-        # Debug pattern loading
+        # Debug pattern loading with enhanced validation
         if self.patterns:
             pattern_types = self.patterns.get("patterns", {})
             self.logger.info(f"Loaded {len(pattern_types)} pattern types: {list(pattern_types.keys())}")
+            
+            # Enhanced pattern validation
+            enhanced_patterns = ['home_directory_commands', 'ignore_patterns', 'high_risk_locations', 'medium_risk_locations', 'low_risk_locations']
+            missing_patterns = [p for p in enhanced_patterns if p not in pattern_types]
+            if missing_patterns:
+                self.logger.warning(f"Missing enhanced patterns: {missing_patterns} - using default detection logic")
+            else:
+                self.logger.info("Enhanced account management patterns loaded successfully")
+                
+            # Log pattern counts for debugging
+            for pattern_name, pattern_list in pattern_types.items():
+                if isinstance(pattern_list, list):
+                    self.logger.debug(f"Pattern '{pattern_name}': {len(pattern_list)} items")
         else:
             self.logger.warning("No patterns loaded from configuration")
         
-        # Tracking for correlation analysis
+        # Tracking for correlation analysis (preserve all existing tracking)
         self.user_events = defaultdict(list)  # user -> list of (timestamp, event_type, details)
         self.auth_failures = defaultdict(list)  # source_ip -> list of (timestamp, user, details)
         self.group_changes = defaultdict(list)  # user -> list of (timestamp, group, operation)
@@ -72,11 +85,28 @@ class AccountManagement(BaseIoCCategory):
         self.shell_changes = defaultdict(list)  # user -> list of (timestamp, old_shell, new_shell)
         self.account_timeline = []  # All account events for correlation
         
-        # Track suspicious activity patterns
+        # Track suspicious activity patterns (preserve existing)
         self.failed_users_per_ip = defaultdict(set)  # ip -> set of usernames attempted
         self.privileged_groups = {'root', 'sudo', 'wheel', 'admin', 'adm', 'staff'}
         
+        # Enhanced detection flags (new)
+        self.enhanced_detection_enabled = self._check_enhanced_patterns_available()
+        if self.enhanced_detection_enabled:
+            self.logger.info("Enhanced detection with context filtering enabled")
+        else:
+            self.logger.info("Using standard detection logic (enhanced patterns not available)")
+        
         self.logger.info(f"Initialized Account Management scanner")
+
+    def _check_enhanced_patterns_available(self) -> bool:
+        """Check if enhanced patterns are available for improved detection."""
+        if not self.patterns:
+            return False
+            
+        pattern_types = self.patterns.get("patterns", {})
+        required_enhanced = ['ignore_patterns', 'home_directory_commands']
+        
+        return all(pattern in pattern_types for pattern in required_enhanced)
     
     def get_required_log_sources(self) -> List[str]:
         """Account management requires auth logs and journald."""
@@ -85,6 +115,90 @@ class AccountManagement(BaseIoCCategory):
     def get_supported_log_sources(self) -> List[str]:
         """Account management can use multiple log sources."""
         return ["auth_log", "journald", "syslog_file"]
+    
+    def _should_ignore_message(self, message: str, ignore_patterns: List[str]) -> bool:
+        """Check if message should be ignored as normal system operation."""
+        message_lower = message.lower()
+        
+        for pattern in ignore_patterns:
+            if pattern.lower() in message_lower:
+                return True
+        
+        # Enhanced system operation indicators
+        system_indicators = [
+            "systemd",
+            "dbus", 
+            "installing",
+            "updating",
+            "configuring",
+            "setting up",
+            # Additional indicators to reduce false positives
+            "processing triggers",
+            "processing packages", 
+            "update-initramfs",
+            "depmod",
+            "ldconfig",
+            "mandb",
+            "update-alternatives",
+            "Creating config file",
+            "Installing new version",
+            "Reloading systemd"
+        ]
+        
+        for indicator in system_indicators:
+            if indicator in message_lower:
+                return True
+        
+        return False
+
+    def _has_home_directory_context(self, message: str, home_commands: List[str]) -> bool:
+        """Check if message contains actual home directory creation context."""
+        message_lower = message.lower()
+        
+        for command in home_commands:
+            if command.lower() in message_lower:
+                return True
+        
+        return False
+
+    def _has_explicit_home_language(self, message: str) -> bool:
+        """Check for explicit home directory creation language."""
+        home_keywords = [
+            "home directory",
+            "home dir",
+            "user home",
+            "creating home",
+            "home created",
+            "home folder"
+        ]
+        
+        message_lower = message.lower()
+        
+        for keyword in home_keywords:
+            if keyword in message_lower:
+                return True
+        
+        return False
+
+    def _determine_location_risk(self, location: str, high_risk: List[str], 
+                            medium_risk: List[str], low_risk: List[str]) -> str:
+        """Determine risk level based on location."""
+        
+        # Check if location matches risk categories
+        for high_loc in high_risk:
+            if high_loc.lower() in location.lower():
+                return "HIGH"
+        
+        for medium_loc in medium_risk:
+            if medium_loc.lower() in location.lower():
+                return "MEDIUM"
+        
+        for low_loc in low_risk:
+            if low_loc.lower() in location.lower():
+                return "LOW"
+        
+        # Default to MEDIUM for unlisted suspicious locations
+        return "MEDIUM"
     
     def scan(self, begin_time: datetime, end_time: datetime) -> List[IoCEvent]:
         """
@@ -186,14 +300,147 @@ class AccountManagement(BaseIoCCategory):
         except Exception as e:
             self.logger.error(f"Error during account management scan: {e}")
             return events
-    
+
+    def _is_legitimate_user_creation(self, message: str, user: str) -> bool:
+        """Check if user creation appears to be legitimate system operation."""
+        
+        # Check for package installation context
+        package_indicators = [
+            "setting up",
+            "configuring", 
+            "postinst",
+            "package",
+            "dpkg",
+            "apt",
+            "apt-get",
+            "adduser --system",
+            "useradd --system",
+            "system user",
+            "service user",
+            "processing triggers"
+        ]
+        
+        message_lower = message.lower()
+        
+        for indicator in package_indicators:
+            if indicator in message_lower:
+                return True
+        
+        # Check for system users (these are often created during package installation)
+        system_users = [
+            "www-data", "mysql", "postgres", "redis", "mongodb",
+            "nginx", "apache", "postfix", "dovecot", "bind",
+            "daemon", "nobody", "systemd-", "messagebus",
+            "syslog", "backup", "mail", "news", "uucp",
+            "proxy", "list", "irc", "gnats", "libuuid",
+            "_apt", "systemd-timesync", "systemd-network",
+            "systemd-resolve", "tss", "uuidd", "tcpdump",
+            "landscape", "lxd", "dnsmasq", "libvirt-qemu",
+            "libvirt-dnsmasq", "whoopsie", "speech-dispatcher",
+            "kernoops", "saned", "pulse", "rtkit", "colord",
+            "geoclue", "sssd", "systemd-coredump"
+        ]
+        
+        if user and user.lower() in [su.lower() for su in system_users]:
+            return True
+        
+        # Check for system user patterns
+        system_patterns = [
+            "systemd-",
+            "_",  # Many system users start with underscore
+            "ntp",
+            "avahi",
+            "cups",
+            "sshd"
+        ]
+        
+        if user:
+            user_lower = user.lower()
+            for pattern in system_patterns:
+                if user_lower.startswith(pattern):
+                    return True
+        
+        # Check for system service installation indicators
+        service_indicators = [
+            "Installing new version of config file",
+            "Created symlink",
+            "service",
+            "daemon",
+            "Reloading systemd",
+            "systemctl"
+        ]
+        
+        for indicator in service_indicators:
+            if indicator in message_lower:
+                return True
+        
+        return False
+
+    def _is_legitimate_user_modification(self, message: str, user: str) -> bool:
+        """Check if user modification appears to be legitimate system operation."""
+        
+        # Check for package installation context
+        package_indicators = [
+            "setting up", "configuring", "postinst", "package", "dpkg", "apt",
+            "update-alternatives", "adduser --system", "system user"
+        ]
+        
+        message_lower = message.lower()
+        
+        for indicator in package_indicators:
+            if indicator in message_lower:
+                return True
+        
+        # Check for system users being modified (often legitimate)
+        system_users = [
+            "www-data", "mysql", "postgres", "redis", "mongodb",
+            "nginx", "apache", "postfix", "dovecot", "bind", "daemon",
+            "nobody", "systemd-", "messagebus"
+        ]
+        
+        if any(sys_user in user.lower() for sys_user in system_users):
+            return True
+        
+        return False
+
+    def _is_legitimate_user_deletion(self, message: str, user: str) -> bool:
+        """Check if user deletion appears to be legitimate system operation."""
+        
+        # Package removal context
+        removal_indicators = [
+            "removing", "purging", "package removal", "postrm", "dpkg",
+            "apt remove", "apt purge", "cleanup"
+        ]
+        
+        message_lower = message.lower()
+        
+        for indicator in removal_indicators:
+            if indicator in message_lower:
+                return True
+        
+        # System user cleanup
+        if any(sys_user in user.lower() for sys_user in ["tmp", "test", "demo"]):
+            return True
+        
+        return False
+
     def _detect_user_lifecycle(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect user creation, modification, and deletion events."""
+        """Enhanced user lifecycle detection with ignore filtering and context awareness."""
         events = []
         
-        # Get user lifecycle patterns
-        creation_patterns = self.patterns.get("patterns", {}).get("user_creation", [])
-        modification_patterns = self.patterns.get("patterns", {}).get("user_modification", [])
+        # Get patterns with safe defaults
+        patterns_dict = self.patterns.get("patterns", {})
+        creation_patterns = patterns_dict.get("user_creation", [])
+        modification_patterns = patterns_dict.get("user_modification", [])
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        
+        # Check if this should be ignored (only if ignore patterns exist)
+        if ignore_patterns and self._should_ignore_message(message, ignore_patterns):
+            return events
+
+        # First, check if this should be ignored (normal system operation)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         target_user = self._extract_target_user_from_message(message)
@@ -201,17 +448,29 @@ class AccountManagement(BaseIoCCategory):
         # Check for user creation
         for pattern in creation_patterns:
             if pattern.lower() in message.lower():
-                severity = "HIGH"
-                event_type = "user_creation"
+                # Determine if this is legitimate system operation
+                is_legitimate = self._is_legitimate_user_creation(message, target_user)
+                
+                if is_legitimate:
+                    severity = "MEDIUM"  # Reduced severity for legitimate operations
+                    event_type = "legitimate_user_creation"
+                else:
+                    severity = "HIGH"
+                    event_type = "user_creation"
                 
                 # Check if system account is being created
                 if target_user in self.patterns.get("patterns", {}).get("suspicious_users", []):
-                    severity = "HIGH"
-                    details = f"Suspicious system account '{target_user}' created by {user}"
+                    if not is_legitimate:  # Only escalate if not legitimate system operation
+                        severity = "HIGH"
+                        details = f"Suspicious system account '{target_user}' created by {user}"
+                    else:
+                        details = f"System account '{target_user}' created by {user} (legitimate operation)"
                 else:
                     details = f"New user account '{target_user}' created by {user}"
+                    if is_legitimate:
+                        details += " (package installation)"
                 
-                # Extract additional details
+                # Extract additional details (preserve existing logic)
                 uid_match = re.search(r'uid[=:](\d+)', message)
                 gid_match = re.search(r'gid[=:](\d+)', message)
                 home_match = re.search(r'home[=:]([^\s,]+)', message)
@@ -231,30 +490,44 @@ class AccountManagement(BaseIoCCategory):
                         'gid': gid_match.group(1) if gid_match else None,
                         'home_directory': home_match.group(1) if home_match else None,
                         'pattern_matched': pattern,
-                        'is_system_account': target_user in self.patterns.get("patterns", {}).get("suspicious_users", [])
+                        'is_system_account': target_user in self.patterns.get("patterns", {}).get("suspicious_users", []),
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
                 events.append(event)
                 
-                # Track for correlation
+                # Track for correlation (preserve existing logic)
                 self.user_events[target_user].append((timestamp, 'creation', details))
                 
                 break
         
-        # Check for user modification
+        # Check for user modification (preserve existing logic with ignore filtering)
         for pattern in modification_patterns:
             if pattern.lower() in message.lower():
-                severity = "MEDIUM"
-                event_type = "user_modification"
+                # Check if this is a legitimate system operation
+                is_legitimate = self._is_legitimate_user_modification(message, target_user)
+                
+                if is_legitimate:
+                    severity = "LOW"  # Further reduced for legitimate modifications
+                    event_type = "legitimate_user_modification"
+                else:
+                    severity = "MEDIUM"
+                    event_type = "user_modification"
                 
                 details = f"User account '{target_user}' modified by {user}"
+                if is_legitimate:
+                    details += " (system operation)"
                 
-                # Check for privilege escalation via usermod
+                # Check for privilege escalation via usermod (preserve existing logic)
                 if "usermod" in message.lower() and any(group in message.lower() for group in self.privileged_groups):
-                    severity = "HIGH"
-                    event_type = "privilege_escalation_usermod"
-                    details += " - privileged group assignment detected"
+                    if not is_legitimate:  # Only escalate if not legitimate
+                        severity = "HIGH"
+                        event_type = "privilege_escalation_usermod"
+                        details += " - privileged group assignment detected"
+                    else:
+                        details += " - privileged group assignment (legitimate)"
                 
                 event = IoCEvent(
                     timestamp=timestamp,
@@ -268,23 +541,32 @@ class AccountManagement(BaseIoCCategory):
                         'acting_user': user,
                         'target_user': target_user,
                         'pattern_matched': pattern,
-                        'modification_type': self._extract_modification_type(message)
+                        'modification_type': self._extract_modification_type(message),
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
                 events.append(event)
                 
-                # Track for correlation
+                # Track for correlation (preserve existing logic)
                 self.user_events[target_user].append((timestamp, 'modification', details))
                 
                 break
         
-        # Check for user deletion
+        # Check for user deletion (preserve existing logic)
         if any(pattern in message.lower() for pattern in ["userdel", "user deleted", "account removed"]):
-            severity = "MEDIUM"
-            event_type = "user_deletion"
+            # Check if this is a legitimate deletion
+            is_legitimate = self._is_legitimate_user_deletion(message, target_user)
             
-            details = f"User account '{target_user}' deleted by {user}"
+            if is_legitimate:
+                severity = "LOW"
+                event_type = "legitimate_user_deletion"
+                details = f"User account '{target_user}' deleted by {user} (system operation)"
+            else:
+                severity = "MEDIUM"
+                event_type = "user_deletion"
+                details = f"User account '{target_user}' deleted by {user}"
             
             event = IoCEvent(
                 timestamp=timestamp,
@@ -297,13 +579,15 @@ class AccountManagement(BaseIoCCategory):
                 metadata={
                     'acting_user': user,
                     'target_user': target_user,
-                    'deletion_type': 'userdel' if 'userdel' in message.lower() else 'other'
+                    'deletion_type': 'userdel' if 'userdel' in message.lower() else 'other',
+                    'is_legitimate': is_legitimate,  # New field
+                    'context_verified': True  # New field
                 }
             )
             
             events.append(event)
             
-            # Track for correlation
+            # Track for correlation (preserve existing logic)
             self.user_events[target_user].append((timestamp, 'deletion', details))
         
         return events
@@ -590,48 +874,55 @@ class AccountManagement(BaseIoCCategory):
         return events
     
     def _detect_home_directory_events(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect unusual home directory creation patterns (enhanced feature)."""
+        """Enhanced home directory detection with context awareness and risk-based severity."""
         events = []
         
-        user = self._extract_user_from_message(message)
+        # Get patterns from configuration
+        suspicious_locations = self.patterns.get("patterns", {}).get("suspicious_home_locations", [])
+        home_commands = self.patterns.get("patterns", {}).get("home_directory_commands", [])
+        ignore_patterns = self.patterns.get("patterns", {}).get("ignore_patterns", [])
+        high_risk = self.patterns.get("patterns", {}).get("high_risk_locations", [])
+        medium_risk = self.patterns.get("patterns", {}).get("medium_risk_locations", [])
+        low_risk = self.patterns.get("patterns", {}).get("low_risk_locations", [])
         
-        # Look for home directory creation in unusual locations
-        home_patterns = [
-            r'/tmp/[^/]+',     # Home in /tmp
-            r'/var/tmp/[^/]+', # Home in /var/tmp
-            r'/dev/shm/[^/]+', # Home in shared memory
-            r'/usr/[^/]+',     # Home in /usr
-            r'/opt/[^/]+',     # Home in /opt
-            r'/var/www/[^/]+'  # Home in web directory
-        ]
+        # First, check if this should be ignored (normal system operation)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
-        for pattern in home_patterns:
-            if re.search(pattern, message):
-                severity = "HIGH"
-                event_type = "suspicious_home_directory"
-                
-                home_match = re.search(pattern, message)
-                suspicious_home = home_match.group(0) if home_match else "unknown"
-                
-                details = f"User home directory created in suspicious location: {suspicious_home} by {user}"
-                
-                event = IoCEvent(
-                    timestamp=timestamp,
-                    category=self.name,
-                    severity=severity,
-                    source=source,
-                    event_type=event_type,
-                    details=details,
-                    raw_log=entry.raw_line,
-                    metadata={
-                        'user': user,
-                        'suspicious_home': suspicious_home,
-                        'pattern_matched': pattern
-                    }
+        # Check for suspicious home directory creation with context
+        for location in suspicious_locations:
+            if location.lower() in message.lower():
+                # Require context: either home directory command OR explicit home directory language
+                has_context = (
+                    self._has_home_directory_context(message, home_commands) or
+                    self._has_explicit_home_language(message)
                 )
                 
-                events.append(event)
-                break
+                if has_context:
+                    # Determine severity based on location risk
+                    severity = self._determine_location_risk(location, high_risk, medium_risk, low_risk)
+                    
+                    user = self._extract_user_from_message(message)
+                    
+                    event = IoCEvent(
+                        timestamp=timestamp,
+                        category=self.name,
+                        severity=severity,
+                        source=source,
+                        event_type=f"{severity.lower()}_risk_home_location",
+                        details=f"User {user} created home directory in {severity.lower()}-risk location: {location}",
+                        raw_log=entry.raw_line,
+                        metadata={
+                            'user': user,
+                            'suspicious_home': location,
+                            'pattern_matched': location,
+                            'risk_level': severity.lower(),
+                            'context_verified': True
+                        }
+                    )
+                    
+                    events.append(event)
+                    break  # Only report one event per message
         
         return events
     

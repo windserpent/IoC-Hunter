@@ -198,18 +198,74 @@
       "suspicious_home_locations": [
         "/tmp/",
         "/var/tmp/",
-        "/dev/shm/",
+        "/dev/shm/", 
         "/var/www/",
-        "/usr/local/"
+        "/opt/",
+        "/srv/",
+        "/mnt/",
+        "/media/",
+        "/root/.ssh/"
+      ],
+      "home_directory_commands": [
+        "useradd -d",
+        "usermod -d", 
+        "usermod --home",
+        "mkdir.*home",
+        "HOME=",
+        "home directory.*created",
+        "creating home directory",
+        "Created home directory",
+        "HOME_DIR=",
+        "chown.*home"
+      ],
+      "ignore_patterns": [
+        "package installation",
+        "apt install",
+        "apt-get install", 
+        "dpkg",
+        "system update",
+        "systemd",
+        "/usr/bin.*executable",
+        "/usr/local.*installation",
+        "Installing to",
+        "Created symlink",
+        "update-alternatives",
+        "ldconfig",
+        "mandb",
+        "fontconfig"
+      ],
+      "high_risk_locations": [
+        "/tmp/",
+        "/dev/shm/",
+        "/var/tmp/"
+      ],
+      "medium_risk_locations": [
+        "/var/www/",
+        "/opt/",
+        "/srv/",
+        "/mnt/"
+      ],
+      "low_risk_locations": [
+        "/media/",
+        "/home/shared/",
+        "/home/public/"
       ]
     },
     "severity_mapping": {
       "user_creation": "HIGH",
+      "legitimate_user_creation": "MEDIUM",
+      "user_modification": "MEDIUM", 
+      "legitimate_user_modification": "LOW",
+      "user_deletion": "MEDIUM",
+      "legitimate_user_deletion": "LOW",
       "root_password_change": "HIGH",
       "group_modification": "MEDIUM",
       "suspicious_user_activity": "HIGH",
       "shadow_access": "HIGH",
-      "user_deletion": "MEDIUM"
+      "privilege_escalation_usermod": "HIGH",
+      "high_risk_home_location": "HIGH",
+      "medium_risk_home_location": "MEDIUM",
+      "low_risk_home_location": "LOW"
     },
     "thresholds": {
       "brute_force_threshold": 5,
