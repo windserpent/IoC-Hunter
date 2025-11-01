@@ -12,14 +12,13 @@ Python 3.9+ compatible.
 
 import re
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Set
-from collections import defaultdict, Counter
+from collections import defaultdict
 from pathlib import Path
 
 from ..core.base_category import BaseIoCCategory, IoCEvent
-from ..utils.helpers import extract_ip_addresses, run_system_command, check_command_availability
+from ..utils.helpers import extract_ip_addresses
 
 
 class PrivilegeEscalation(BaseIoCCategory):
@@ -43,7 +42,7 @@ class PrivilegeEscalation(BaseIoCCategory):
     version = "1.0.0"
     tier = 1  # Tier 1 = Critical (included in quick scans)
     
-    def __init__(self, config_manager=None, log_sources=None):
+    def __init__(self, config_manager: Optional[Any] = None, log_sources: Optional[Any] = None) -> None:
         super().__init__(config_manager, log_sources)
         
         # Load privilege escalation patterns and thresholds
@@ -75,6 +74,10 @@ class PrivilegeEscalation(BaseIoCCategory):
         self.logger.info(f"Initialized Privilege Escalation scanner")
         if self.custom_sudo_logs:
             self.logger.info(f"Discovered custom sudo log paths: {self.custom_sudo_logs}")
+
+    def _get_category_name(self) -> str:
+        """Get the category name, ensuring it's never None for type safety."""
+        return self.name or "privilege_escalation"
     
     def get_required_log_sources(self) -> List[str]:
         """Privilege escalation requires auth logs, journald, and syslog."""
@@ -361,7 +364,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -391,7 +394,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -432,7 +435,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -486,7 +489,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -532,7 +535,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -585,7 +588,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -640,7 +643,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=timestamp,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source=source,
                         event_type=event_type,
@@ -717,7 +720,7 @@ class PrivilegeEscalation(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=start_time,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,

@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union, List
 
 try:
-    import yaml
+    import yaml  # type: ignore
     YAML_AVAILABLE = True
 except ImportError:
+    yaml = None  # type: ignore
     YAML_AVAILABLE = False
     logging.warning("PyYAML not available - YAML config files will not be supported")
 
@@ -164,6 +165,8 @@ class ConfigManager:
     
     def _load_yaml(self, path: Path) -> Dict[str, Any]:
         """Load YAML configuration file."""
+        if not YAML_AVAILABLE or yaml is None:
+            raise ImportError("PyYAML is required to load YAML configuration files")
         with open(path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
     
@@ -222,7 +225,7 @@ class ConfigManager:
         # String value
         return value
     
-    def get(self, config_name: str, key: str = None, default: Any = None) -> Any:
+    def get(self, config_name: str, key: Optional[str] = None, default: Any = None) -> Any:
         """
         Get configuration value with optional key path.
         
@@ -303,7 +306,7 @@ class ConfigManager:
         
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
-                if format == "yaml":
+                if format == "yaml" and YAML_AVAILABLE and yaml is not None:
                     yaml.dump(config_data, f, default_flow_style=False, indent=2)
                 else:
                     json.dump(config_data, f, indent=2, ensure_ascii=False)

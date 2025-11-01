@@ -228,6 +228,9 @@ class IoCScanner:
                     # Import the module
                     if module_name not in sys.modules:
                         spec = importlib.util.spec_from_file_location(module_name, exporter_file)
+                        if spec is None or spec.loader is None:
+                            self.logger.error(f"Could not create module spec for {exporter_file}")
+                            continue
                         module = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(module)
                         sys.modules[module_name] = module
@@ -260,10 +263,15 @@ class IoCScanner:
         else:
             self.logger.info(f"Accessible log sources: {', '.join(accessible_sources)}")
         
-        # Check if running with sufficient privileges
+        # Check if running with sufficient privileges (Unix/Linux only)
         import os
-        if os.geteuid() != 0:
-            self.logger.warning("Not running as root - some log sources may not be accessible")
+        try:
+            geteuid = getattr(os, 'geteuid', None)
+            if geteuid is not None and geteuid() != 0:
+                self.logger.warning("Not running as root - some log sources may not be accessible")
+        except (AttributeError, OSError):
+            # geteuid not available on this platform (e.g., Windows)
+            pass
     
     def scan(self, 
              categories: Optional[List[str]] = None,

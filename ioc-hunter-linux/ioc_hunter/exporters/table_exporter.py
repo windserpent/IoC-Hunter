@@ -11,7 +11,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Union, IO
+from typing import List, Dict, Any, Union, IO, Optional, cast
 
 from ..core.base_exporter import BaseExporter, ExportMetadata
 from ..core.base_category import IoCEvent
@@ -69,14 +69,14 @@ class TableExporter(BaseExporter):
             self.reset_color = ""
     
     def export(self, events: List[IoCEvent], metadata: ExportMetadata, 
-               output_path: Union[str, Path] = None, **kwargs) -> bool:
+               output: Optional[Union[str, Path, IO]] = None, **kwargs) -> bool:
         """
         Export IoC events to table format.
         
         Args:
             events: List of IoC events to export
             metadata: Export metadata
-            output_path: Path to write table file (None = stdout)
+            output: Path to write table file (None = stdout)
             **kwargs: Additional export options
             
         Returns:
@@ -85,20 +85,32 @@ class TableExporter(BaseExporter):
         try:
             self.logger.debug(f"Starting table export for {len(events)} events")
             
-            # Determine output destination
-            if output_path:
-                output_path = Path(output_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_file = open(output_path, 'w', encoding='utf-8')
-                # Disable colors for file output
-                use_colors = False
-                severity_colors = {k: "" for k in self.severity_colors}
-                reset_color = ""
-            else:
+            # Determine output destination and handle different types
+            close_file = False
+            if output is None:
+                # Default to stdout
                 output_file = sys.stdout
                 use_colors = self.use_colors
                 severity_colors = self.severity_colors
                 reset_color = self.reset_color
+            elif hasattr(output, 'write'):
+                # output is an IO object, use it directly
+                output_file = cast(IO, output)
+                # Disable colors for IO stream output
+                use_colors = False
+                severity_colors = {k: "" for k in self.severity_colors}
+                reset_color = ""
+            else:
+                # output is a path-like object, convert to Path and handle file creation
+                path_output = cast(Union[str, Path], output)
+                output_path = Path(path_output)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_file = open(output_path, 'w', encoding='utf-8')
+                close_file = True
+                # Disable colors for file output
+                use_colors = False
+                severity_colors = {k: "" for k in self.severity_colors}
+                reset_color = ""
             
             try:
                 # Write header information
@@ -113,11 +125,15 @@ class TableExporter(BaseExporter):
                     self._write_summary(output_file, events, use_colors, reset_color)
                 
             finally:
-                if output_path:
+                if close_file:
                     output_file.close()
             
-            if output_path:
-                self.logger.info(f"Table export completed: {output_path}")
+            if output is None:
+                self.logger.info("Table export completed to stdout")
+            elif hasattr(output, 'write'):
+                self.logger.info("Table export completed to IO stream")
+            else:
+                self.logger.info(f"Table export completed: {output}")
             
             return True
             

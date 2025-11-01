@@ -95,6 +95,10 @@ class ProcessExecution(BaseIoCCategory):
         self.logger.info(f"Initialized Process Execution scanner")
         self.logger.info(f"Monitoring {len(self.network_tools)} network tools, {len(self.download_tools)} download tools")
     
+    def _get_category_name(self) -> str:
+        """Get the category name, ensuring it's never None for type safety."""
+        return self.name or "process_execution"
+    
     def get_required_log_sources(self) -> List[str]:
         """Process execution requires multiple log sources for comprehensive monitoring."""
         return ["journald", "auth_log"]
@@ -234,7 +238,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -289,7 +293,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -345,7 +349,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -393,7 +397,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -449,7 +453,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -508,7 +512,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -612,7 +616,7 @@ class ProcessExecution(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=start_time,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,
@@ -665,7 +669,7 @@ class ProcessExecution(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=first_event_time,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,
@@ -708,7 +712,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=first_usage_time,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source="correlation_analysis",
                     event_type=event_type,
@@ -748,7 +752,7 @@ class ProcessExecution(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=first_download_time,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source="correlation_analysis",
                     event_type=event_type,

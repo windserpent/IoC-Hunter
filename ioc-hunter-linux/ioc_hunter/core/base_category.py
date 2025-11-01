@@ -131,6 +131,10 @@ class BaseIoCCategory(ABC):
             "last_scan": None
         }
     
+    def _get_category_name(self) -> str:
+        """Get the category name, ensuring it's never None for type safety."""
+        return self.name or "unknown_category"
+    
     @abstractmethod
     def scan(self, begin_time: datetime, end_time: datetime) -> List[IoCEvent]:
         """
@@ -272,7 +276,7 @@ class BaseIoCCategory(ABC):
         
         return IoCEvent(
             timestamp=timestamp,
-            category=self.name,
+            category=self._get_category_name(),
             severity=severity,
             source=source,
             event_type=event_type,
@@ -322,7 +326,7 @@ class CategoryRegistry:
     """
     
     def __init__(self):
-        self._categories: Dict[str, BaseIoCCategory] = {}
+        self._categories: Dict[str, type[BaseIoCCategory]] = {}
         self.logger = logging.getLogger(__name__)
     
     def register_category(self, category_class: type) -> None:
@@ -340,6 +344,10 @@ class CategoryRegistry:
             instance = category_class()
             category_name = instance.name
             
+            # Ensure category name is not None
+            if not category_name:
+                raise ValueError(f"Category {category_class.__name__} has no name defined")
+            
             if category_name in self._categories:
                 self.logger.debug(f"Category '{category_name}' already registered, overwriting")
             
@@ -350,7 +358,7 @@ class CategoryRegistry:
             self.logger.error(f"Failed to register category {category_class}: {e}")
             raise
     
-    def get_category(self, name: str) -> Optional[type]:
+    def get_category(self, name: str) -> Optional[type[BaseIoCCategory]]:
         """
         Get category class by name.
         
@@ -362,11 +370,11 @@ class CategoryRegistry:
         """
         return self._categories.get(name)
     
-    def get_all_categories(self) -> Dict[str, type]:
+    def get_all_categories(self) -> Dict[str, type[BaseIoCCategory]]:
         """Get all registered categories."""
         return self._categories.copy()
     
-    def get_tier_categories(self, tier: int) -> Dict[str, type]:
+    def get_tier_categories(self, tier: int) -> Dict[str, type[BaseIoCCategory]]:
         """
         Get categories by tier.
         
@@ -376,7 +384,7 @@ class CategoryRegistry:
         Returns:
             Dictionary of categories in the specified tier
         """
-        tier_categories = {}
+        tier_categories: Dict[str, type[BaseIoCCategory]] = {}
         
         for name, category_class in self._categories.items():
             try:

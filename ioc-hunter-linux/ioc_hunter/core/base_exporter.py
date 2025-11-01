@@ -82,10 +82,10 @@ class BaseExporter(ABC):
     """
     
     # Exporter metadata - must be defined by subclasses
-    name: str = None              # Exporter name (e.g., "csv")
-    display_name: str = None      # Human-readable name (e.g., "CSV Export")
-    description: str = None       # Exporter description
-    file_extension: str = None    # Default file extension (e.g., ".csv")
+    name: Optional[str] = None              # Exporter name (e.g., "csv")
+    display_name: Optional[str] = None      # Human-readable name (e.g., "CSV Export")
+    description: Optional[str] = None       # Exporter description
+    file_extension: Optional[str] = None    # Default file extension (e.g., ".csv")
     supports_streaming: bool = False  # Whether exporter supports streaming output
     version: str = "1.0.0"       # Exporter version
     
@@ -349,7 +349,7 @@ class ExporterRegistry:
     """
     
     def __init__(self):
-        self._exporters: Dict[str, BaseExporter] = {}
+        self._exporters: Dict[str, type[BaseExporter]] = {}
         self.logger = logging.getLogger(__name__)
     
     def register_exporter(self, exporter_class: type) -> None:
@@ -367,6 +367,10 @@ class ExporterRegistry:
             instance = exporter_class()
             exporter_name = instance.name
             
+            # Ensure exporter name is not None
+            if not exporter_name:
+                raise ValueError(f"Exporter {exporter_class.__name__} has no name defined")
+            
             if exporter_name in self._exporters:
                 self.logger.debug(f"Exporter '{exporter_name}' already registered, overwriting")
             
@@ -377,7 +381,7 @@ class ExporterRegistry:
             self.logger.error(f"Failed to register exporter {exporter_class}: {e}")
             raise
     
-    def get_exporter(self, name: str) -> Optional[type]:
+    def get_exporter(self, name: str) -> Optional[type[BaseExporter]]:
         """
         Get exporter class by name.
         
@@ -389,7 +393,7 @@ class ExporterRegistry:
         """
         return self._exporters.get(name)
     
-    def get_all_exporters(self) -> Dict[str, type]:
+    def get_all_exporters(self) -> Dict[str, type[BaseExporter]]:
         """Get all registered exporters."""
         return self._exporters.copy()
     

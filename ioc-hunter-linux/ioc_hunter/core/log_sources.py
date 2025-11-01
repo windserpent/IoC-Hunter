@@ -22,9 +22,10 @@ from ..utils.helpers import run_system_command, parse_log_line_timestamp
 
 # Try to import systemd for native journald support
 try:
-    import systemd.journal
+    import systemd.journal  # type: ignore
     SYSTEMD_AVAILABLE = True
 except ImportError:
+    systemd = None  # type: ignore
     SYSTEMD_AVAILABLE = False
     logging.warning("systemd-python not available - using journalctl via subprocess")
 
@@ -90,9 +91,9 @@ class BaseLogSource(ABC):
     All log source implementations must inherit from this class.
     """
     
-    name: str = None              # Source name (e.g., "journald")
-    display_name: str = None      # Human-readable name
-    description: str = None       # Source description
+    name: Optional[str] = None              # Source name (e.g., "journald")
+    display_name: Optional[str] = None      # Human-readable name
+    description: Optional[str] = None       # Source description
     priority: int = 999           # Source priority (lower = higher priority)
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -108,6 +109,10 @@ class BaseLogSource(ABC):
         self.config = config or {}
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
         self.is_available = self._check_availability()
+    
+    def _get_source_name(self) -> str:
+        """Get the source name, ensuring it's never None for type safety."""
+        return self.name or "unknown_source"
     
     @abstractmethod
     def get_entries(self, begin_time: datetime, end_time: datetime, 
@@ -192,6 +197,8 @@ class JournaldLogSource(BaseLogSource):
     def _get_entries_native(self, begin_time: datetime, end_time: datetime, 
                            filters: Optional[Dict[str, Any]]) -> Generator[LogEntry, None, None]:
         """Get entries using native systemd-python."""
+        if not SYSTEMD_AVAILABLE or systemd is None:
+            raise ImportError("systemd-python is required for native journald access")
         try:
             journal = systemd.journal.Reader()
             
@@ -226,7 +233,7 @@ class JournaldLogSource(BaseLogSource):
                     
                     yield LogEntry(
                         timestamp=entry_datetime,
-                        source=self.name,
+                        source=self._get_source_name(),
                         message=message,
                         metadata=metadata,
                         raw_line=f"{entry_datetime} {message}"
@@ -287,7 +294,7 @@ class JournaldLogSource(BaseLogSource):
                     
                     yield LogEntry(
                         timestamp=entry_datetime,
-                        source=self.name,
+                        source=self._get_source_name(),
                         message=message,
                         metadata=entry_data,
                         raw_line=f"{entry_datetime} {message}"

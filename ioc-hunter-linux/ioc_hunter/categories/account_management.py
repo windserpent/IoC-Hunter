@@ -12,14 +12,12 @@ Python 3.9+ compatible.
 
 import re
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Set
-from collections import defaultdict, Counter
-from pathlib import Path
+from collections import defaultdict
 
 from ..core.base_category import BaseIoCCategory, IoCEvent
-from ..utils.helpers import extract_ip_addresses, run_system_command, check_command_availability
+from ..utils.helpers import extract_ip_addresses
 
 
 class AccountManagement(BaseIoCCategory):
@@ -44,7 +42,7 @@ class AccountManagement(BaseIoCCategory):
     version = "1.0.0"
     tier = 1  # Tier 1 = Critical (included in quick scans)
     
-    def __init__(self, config_manager=None, log_sources=None):
+    def __init__(self, config_manager: Optional[Any] = None, log_sources: Optional[Any] = None) -> None:
         super().__init__(config_manager, log_sources)
         
         # Load account management patterns and thresholds
@@ -97,6 +95,10 @@ class AccountManagement(BaseIoCCategory):
             self.logger.info("Using standard detection logic (enhanced patterns not available)")
         
         self.logger.info(f"Initialized Account Management scanner")
+
+    def _get_category_name(self) -> str:
+        """Get the category name, ensuring it's never None for type safety."""
+        return self.name or "account_management"
 
     def _check_enhanced_patterns_available(self) -> bool:
         """Check if enhanced patterns are available for improved detection."""
@@ -477,7 +479,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -531,7 +533,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -570,7 +572,7 @@ class AccountManagement(BaseIoCCategory):
             
             event = IoCEvent(
                 timestamp=timestamp,
-                category=self.name,
+                category=self._get_category_name(),
                 severity=severity,
                 source=source,
                 event_type=event_type,
@@ -630,7 +632,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -677,6 +679,9 @@ class AccountManagement(BaseIoCCategory):
                 if source_ip:
                     details += f" from {source_ip}"
                 
+                # Initialize recent_failures to avoid unbound variable
+                recent_failures = []
+                
                 # Track failed attempts for brute force detection
                 if source_ip:
                     self.auth_failures[source_ip].append((timestamp, user, details))
@@ -695,7 +700,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -748,7 +753,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -799,7 +804,7 @@ class AccountManagement(BaseIoCCategory):
                 
                 event = IoCEvent(
                     timestamp=timestamp,
-                    category=self.name,
+                    category=self._get_category_name(),
                     severity=severity,
                     source=source,
                     event_type=event_type,
@@ -852,7 +857,7 @@ class AccountManagement(BaseIoCCategory):
             
             event = IoCEvent(
                 timestamp=timestamp,
-                category=self.name,
+                category=self._get_category_name(),
                 severity=severity,
                 source=source,
                 event_type=event_type,
@@ -906,7 +911,7 @@ class AccountManagement(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=timestamp,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source=source,
                         event_type=f"{severity.lower()}_risk_home_location",
@@ -992,7 +997,7 @@ class AccountManagement(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=start_time,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,
@@ -1035,7 +1040,7 @@ class AccountManagement(BaseIoCCategory):
                 if first_event_time:
                     event = IoCEvent(
                         timestamp=first_event_time,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,
@@ -1073,7 +1078,7 @@ class AccountManagement(BaseIoCCategory):
                     
                     event = IoCEvent(
                         timestamp=timestamp,
-                        category=self.name,
+                        category=self._get_category_name(),
                         severity=severity,
                         source="correlation_analysis",
                         event_type=event_type,

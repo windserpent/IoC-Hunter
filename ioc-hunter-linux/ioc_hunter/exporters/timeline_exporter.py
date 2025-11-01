@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, IO, cast
 
 from ..core.base_exporter import BaseExporter, ExportMetadata
 from ..core.base_category import IoCEvent
@@ -54,42 +54,57 @@ class TimelineExporter(BaseExporter):
         self.timestamp_precision = self.timeline_config.get("timestamp_precision", "second")  # second, minute
         
     def export(self, events: List[IoCEvent], metadata: ExportMetadata, 
-               output_path: Union[str, Path], **kwargs) -> bool:
+               output: Union[str, Path, IO], **kwargs) -> bool:
         """
         Export IoC events to timeline format.
         
         Args:
             events: List of IoC events to export
             metadata: Export metadata
-            output_path: Path to write timeline file
+            output: Path to write timeline file
             **kwargs: Additional export options
             
         Returns:
             True if export successful, False otherwise
         """
         try:
-            self.logger.info(f"Starting timeline export to {output_path}")
+            self.logger.info(f"Starting timeline export to {output}")
             self.logger.debug(f"Exporting {len(events)} events in timeline format")
             
-            # Prepare output path
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Build timeline document
-            timeline_document = self._build_timeline_document(events, metadata)
-            
-            # Write timeline file
-            with open(output_path, 'w', encoding='utf-8') as timelinefile:
+            # Prepare output - handle both path and IO objects
+            if hasattr(output, 'write'):
+                # output is an IO object, use it directly
+                io_output = cast(IO, output)
+                timeline_document = self._build_timeline_document(events, metadata)
                 json.dump(
                     timeline_document,
-                    timelinefile,
+                    io_output,
                     indent=2,
                     ensure_ascii=False,
                     sort_keys=False,  # Preserve chronological order
                     default=self._json_serializer
                 )
-            
-            self.logger.info(f"Timeline export completed: {output_path}")
+                self.logger.info(f"Timeline export completed to IO stream")
+            else:
+                # output is a path-like object, convert to Path and handle file creation
+                path_output = cast(Union[str, Path], output)
+                output_path = Path(path_output)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Build timeline document
+                timeline_document = self._build_timeline_document(events, metadata)
+                
+                # Write timeline file
+                with open(output_path, 'w', encoding='utf-8') as timelinefile:
+                    json.dump(
+                        timeline_document,
+                        timelinefile,
+                        indent=2,
+                        ensure_ascii=False,
+                        sort_keys=False,  # Preserve chronological order
+                        default=self._json_serializer
+                    )
+                self.logger.info(f"Timeline export completed: {output_path}")
             return True
             
         except Exception as e:
@@ -124,7 +139,7 @@ class TimelineExporter(BaseExporter):
             document["timeline_statistics"] = self._build_timeline_statistics(sorted_events)
         
         # Build time-grouped events
-        document["timeline"] = self._build_timeline_sequence(sorted_events)
+        document["timeline"] = self._build_timeline_sequence(sorted_events)  # type: ignore
         
         return document
     
@@ -145,7 +160,10 @@ class TimelineExporter(BaseExporter):
             "scan_end": metadata.scan_end.isoformat(),
             "categories_scanned": metadata.categories_scanned,
             "total_events": metadata.total_events,
-            "scan_duration_seconds": metadata.scan_duration.total_seconds() if metadata.scan_duration else None,
+            "scan_duration_seconds": (
+                getattr(metadata.scan_duration, 'total_seconds', lambda: metadata.scan_duration)()
+                if metadata.scan_duration else None
+            ),
             "export_format": "timeline",
             "export_version": self.version
         }
@@ -204,7 +222,7 @@ class TimelineExporter(BaseExporter):
             Peak activity period information
         """
         if len(events) < 2:
-            return None
+            return {}
         
         window_minutes = 5
         window_delta = timedelta(minutes=window_minutes)
@@ -436,7 +454,7 @@ class TimelineExporter(BaseExporter):
             Gap information if gap is significant, None otherwise
         """
         if not self.include_gaps:
-            return None
+            return {}
         
         prev_time = datetime.fromisoformat(prev_entry["timestamp"])
         current_time = datetime.fromisoformat(current_entry["timestamp"])
@@ -451,7 +469,7 @@ class TimelineExporter(BaseExporter):
                 "gap_description": f"No activity for {self._format_duration(gap_duration * 60)}"
             }
         
-        return None
+        return {}
     
     def _format_duration(self, seconds: float) -> str:
         """
