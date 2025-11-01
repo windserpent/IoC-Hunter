@@ -647,8 +647,20 @@ class PrivilegeEscalation(BaseIoCCategory):
         return events
     
     def _detect_suid_binary_usage(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect SUID/SGID binary usage patterns (enhanced feature)."""
+        """Enhanced SUID/SGID binary usage detection with context awareness and filtering."""
         events = []
+        
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        high_risk_operations = patterns_dict.get("high_risk_operations", [])
+        medium_risk_operations = patterns_dict.get("medium_risk_operations", [])
+        low_risk_operations = patterns_dict.get("low_risk_operations", [])
+        
+        # FIRST: Check if this should be ignored (system events, legitimate operations)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         
@@ -664,14 +676,39 @@ class PrivilegeEscalation(BaseIoCCategory):
             if f" {binary} " in message or f"/{binary} " in message or message.endswith(binary):
                 # Check if this appears to be executed with elevated privileges
                 if any(indicator in message.lower() for indicator in ["root", "uid=0", "euid=0"]):
-                    severity = "MEDIUM"
-                    event_type = "suid_binary_usage"
+                    
+                    # Check if this is a legitimate operation
+                    is_legitimate = (
+                        self._has_legitimate_context(message, legitimate_contexts) or
+                        self._is_legitimate_privilege_operation(message, message) or
+                        self._is_legitimate_suid_usage(message, binary)
+                    )
+                    
+                    # Determine base severity based on binary risk
+                    if binary in ["vim", "nano", "find", "nmap", "docker"]:
+                        base_severity = "HIGH"
+                        escalation_potential = True
+                    else:
+                        base_severity = "MEDIUM"
+                        escalation_potential = False
+                    
+                    # Adjust severity based on legitimacy
+                    if is_legitimate:
+                        if base_severity == "HIGH":
+                            severity = "MEDIUM"  # Reduce HIGH to MEDIUM for legitimate
+                        else:
+                            severity = "LOW"     # Reduce MEDIUM to LOW for legitimate
+                        event_type = "legitimate_suid_binary_usage"
+                    else:
+                        severity = base_severity
+                        event_type = "suid_binary_usage"
                     
                     details = f"User {user} executed SUID binary {binary} with elevated privileges"
                     
-                    # Increase severity for particularly dangerous binaries
-                    if binary in ["vim", "nano", "find", "nmap", "docker"]:
-                        severity = "HIGH"
+                    # Add context information
+                    if is_legitimate:
+                        details += " (legitimate system operation)"
+                    elif escalation_potential and not is_legitimate:
                         details += f" - {binary} can be used for privilege escalation"
                     
                     event = IoCEvent(
@@ -685,7 +722,11 @@ class PrivilegeEscalation(BaseIoCCategory):
                         metadata={
                             'user': user,
                             'binary': binary,
-                            'escalation_potential': binary in ["vim", "nano", "find", "nmap", "docker"]
+                            'escalation_potential': escalation_potential,
+                            'is_legitimate': is_legitimate,  # New field
+                            'context_verified': True,  # New field
+                            'base_severity': base_severity,  # New field
+                            'risk_level': base_severity.lower()
                         }
                     )
                     
@@ -972,3 +1013,55 @@ class PrivilegeEscalation(BaseIoCCategory):
         
         combined_text = f"{message} {command}".lower()
         return any(indicator in combined_text for indicator in legitimate_indicators)
+
+    def _is_legitimate_suid_usage(self, message: str, binary: str) -> bool:
+        """Check if SUID binary usage appears legitimate based on context."""
+        message_lower = message.lower()
+        
+        # Package management contexts (most common legitimate usage)
+        package_contexts = [
+            'apt install', 'apt-get install', 'dpkg', 'yum install', 
+            'dnf install', 'pip install', 'npm install', 'gem install',
+            'cargo install', 'package installation', 'software installation'
+        ]
+        
+        # System operation contexts
+        system_contexts = [
+            'systemd', 'cron', 'logrotate', 'backup', 'maintenance',
+            'system update', 'scheduled task', 'system service',
+            'startup script', 'init script', 'service script'
+        ]
+        
+        # Check for package management (very high confidence of legitimacy)
+        for context in package_contexts:
+            if context in message_lower:
+                return True
+        
+        # Check for system operations
+        for context in system_contexts:
+            if context in message_lower:
+                return True
+        
+        # Specific binary legitimacy checks
+        if binary == 'gawk':
+            # gawk is commonly used in package scripts and system operations
+            if any(indicator in message_lower for indicator in [
+                'sed', 'grep', 'awk', 'package', 'install', 'script', 'configure'
+            ]):
+                return True
+        
+        if binary in ['mount', 'umount']:
+            # Mount/umount in system contexts
+            if any(indicator in message_lower for indicator in [
+                'filesystem', 'boot', 'system', 'fstab', 'systemd'
+            ]):
+                return True
+        
+        if binary == 'systemctl':
+            # systemctl in service management contexts
+            if any(indicator in message_lower for indicator in [
+                'service', 'daemon', 'enable', 'disable', 'start', 'stop'
+            ]):
+                return True
+        
+        return False

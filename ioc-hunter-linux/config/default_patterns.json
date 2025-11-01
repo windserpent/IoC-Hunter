@@ -178,7 +178,9 @@
       "passwd_change": "HIGH",
       "legitimate_passwd_change": "MEDIUM",
       "visudo_access": "HIGH",
-      "suid_discovery": "MEDIUM"
+      "suid_discovery": "MEDIUM",
+      "suid_binary_usage": "MEDIUM",
+      "legitimate_suid_binary_usage": "LOW"
     },
     "thresholds": {
       "sudo_abuse_threshold": 3,
