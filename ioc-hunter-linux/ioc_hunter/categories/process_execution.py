@@ -205,32 +205,61 @@ class ProcessExecution(BaseIoCCategory):
             return events
     
     def _detect_suspicious_processes(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect suspicious process execution patterns."""
+        """Enhanced suspicious process detection with context awareness and filtering."""
         events = []
         
-        # Get suspicious process patterns
-        suspicious_patterns = self.patterns.get("patterns", {}).get("suspicious_processes", [])
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        suspicious_patterns = patterns_dict.get("suspicious_processes", [])
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        
+        # FIRST: Check if this should be ignored (system events, crashes)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         command = self._extract_command_from_message(message)
         
+        # Skip if we couldn't extract meaningful user/command info
+        if user == 'unknown' and command in ['system_message', 'unknown']:
+            return events
+        
         for pattern in suspicious_patterns:
             if pattern.lower() in message.lower():
-                severity = "HIGH"
-                event_type = "suspicious_process_execution"
+                # Check for legitimate context
+                is_legitimate = self._has_legitimate_context(message, legitimate_contexts)
+                
+                if is_legitimate:
+                    severity = "LOW"
+                    event_type = "legitimate_process_execution"
+                else:
+                    severity = "HIGH"
+                    event_type = "suspicious_process_execution"
                 
                 # Determine specific threat type
                 if "bash -i" in message.lower() or "sh -i" in message.lower():
-                    event_type = "interactive_shell_execution"
-                    details = f"Interactive shell executed by {user}: {command}"
+                    if not is_legitimate:
+                        event_type = "interactive_shell_execution"
+                        details = f"Interactive shell executed by {user}: {command}"
+                    else:
+                        details = f"Interactive shell executed by {user}: {command} (legitimate usage)"
                 elif "/dev/tcp/" in message.lower() or "/dev/udp/" in message.lower():
-                    event_type = "network_file_descriptor_usage"
-                    details = f"Network file descriptor usage detected by {user}: {command}"
+                    if not is_legitimate:
+                        event_type = "network_file_descriptor_usage"
+                        details = f"Network file descriptor usage detected by {user}: {command}"
+                    else:
+                        details = f"Network file descriptor usage by {user}: {command} (legitimate usage)"
                 elif any(lang in message.lower() for lang in ["python -c", "perl -e", "ruby -e", "php -r"]):
-                    event_type = "inline_script_execution"
-                    details = f"Inline script execution by {user}: {command}"
+                    if not is_legitimate:
+                        event_type = "inline_script_execution"
+                        details = f"Inline script execution by {user}: {command}"
+                    else:
+                        details = f"Inline script execution by {user}: {command} (legitimate usage)"
                 else:
                     details = f"Suspicious process execution by {user}: {command}"
+                    if is_legitimate:
+                        details += " (legitimate usage)"
                 
                 # Extract additional context
                 pid = self._extract_pid_from_message(message)
@@ -250,7 +279,9 @@ class ProcessExecution(BaseIoCCategory):
                         'pid': pid,
                         'parent_process': parent_process,
                         'pattern_matched': pattern,
-                        'threat_type': 'process_execution'
+                        'threat_type': 'process_execution',
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
@@ -265,31 +296,72 @@ class ProcessExecution(BaseIoCCategory):
         return events
     
     def _detect_network_tools(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect network reconnaissance tool usage."""
+        """Enhanced network tool detection with risk-based severity and context awareness."""
         events = []
+        
+        # Get patterns for risk classification
+        patterns_dict = self.patterns.get("patterns", {})
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        high_risk_tools = patterns_dict.get("high_risk_network_tools", [])
+        medium_risk_tools = patterns_dict.get("medium_risk_network_tools", [])
+        low_risk_tools = patterns_dict.get("low_risk_network_tools", [])
+        
+        # FIRST: Check if this should be ignored (system events)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         command = self._extract_command_from_message(message)
         
+        # Skip if we couldn't extract meaningful user/command info
+        if user == 'unknown' and command in ['system_message', 'unknown']:
+            return events
+        
         # Check for network tool usage
         for tool in self.network_tools:
             if tool.lower() in message.lower():
-                severity = "HIGH"
-                event_type = "network_reconnaissance"
+                # Determine if this is legitimate usage
+                is_legitimate = (
+                    self._has_legitimate_context(message, legitimate_contexts) or
+                    self._is_legitimate_network_usage(message, tool)
+                )
+                
+                # Determine risk level and severity
+                risk_level = self._determine_network_tool_risk(tool, high_risk_tools, medium_risk_tools, low_risk_tools)
+                
+                if is_legitimate:
+                    # Reduce severity for legitimate usage
+                    if risk_level == "HIGH":
+                        severity = "MEDIUM"
+                    elif risk_level == "MEDIUM":
+                        severity = "LOW" 
+                    else:
+                        severity = "LOW"
+                    event_type = f"legitimate_network_tool_usage"
+                else:
+                    severity = risk_level
+                    event_type = f"{risk_level.lower()}_risk_network_scanning"
                 
                 # Extract target information
                 target = self._extract_target_from_command(command, tool)
                 scan_type = self._extract_scan_type(command, tool)
                 
+                # Create detailed description based on tool type and context
                 if tool in ["nmap", "masscan", "zmap"]:
-                    event_type = "network_scanning"
-                    details = f"Network scanning tool '{tool}' used by {user} targeting {target}"
+                    tool_description = "Network scanning tool"
                 elif tool in ["tcpdump", "wireshark", "tshark"]:
-                    event_type = "network_monitoring"
-                    details = f"Network monitoring tool '{tool}' used by {user}"
-                    severity = "MEDIUM"  # Monitoring tools are less critical than active scanning
+                    tool_description = "Network monitoring tool"
+                elif tool in ["ncat", "socat"]:
+                    tool_description = "Network utility"
                 else:
-                    details = f"Network tool '{tool}' executed by {user}: {command}"
+                    tool_description = "Network tool"
+                
+                details = f"{tool_description} '{tool}' used by {user}"
+                if target != 'unknown':
+                    details += f" targeting {target}"
+                if is_legitimate:
+                    details += " (legitimate usage)"
                 
                 event = IoCEvent(
                     timestamp=timestamp,
@@ -305,7 +377,10 @@ class ProcessExecution(BaseIoCCategory):
                         'command': command,
                         'target': target,
                         'scan_type': scan_type,
-                        'threat_type': 'network_reconnaissance'
+                        'threat_type': 'network_reconnaissance',
+                        'risk_level': risk_level.lower(),
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
@@ -320,32 +395,59 @@ class ProcessExecution(BaseIoCCategory):
         return events
     
     def _detect_download_activities(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect suspicious file download activities."""
+        """Enhanced download detection with context awareness and legitimate usage detection."""
         events = []
+        
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        
+        # FIRST: Check if this should be ignored (system events)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         command = self._extract_command_from_message(message)
         
+        # Skip if we couldn't extract meaningful user/command info
+        if user == 'unknown' and command in ['system_message', 'unknown']:
+            return events
+        
         # Check for download tool usage
         for tool in self.download_tools:
             if tool.lower() in message.lower():
-                severity = "MEDIUM"
-                event_type = "file_download"
-                
                 # Extract URL and destination
                 url = self._extract_url_from_command(command)
                 destination = self._extract_download_destination(command)
                 
-                # Increase severity for suspicious patterns
-                if any(suspicious in command.lower() for suspicious in ["/tmp/", "/var/tmp/", "/dev/shm/", "127.0.0.1", "localhost"]):
-                    severity = "HIGH"
-                    event_type = "suspicious_download"
+                # Check if this is legitimate usage
+                is_legitimate = (
+                    self._has_legitimate_context(message, legitimate_contexts) or
+                    self._is_legitimate_download(message, command)
+                )
                 
-                if any(suspicious in url.lower() for suspicious in ["pastebin", "bit.ly", "tinyurl", ".onion"]):
-                    severity = "HIGH"
-                    event_type = "suspicious_url_download"
+                # Determine base severity
+                if is_legitimate:
+                    severity = "LOW"
+                    event_type = "legitimate_download"
+                else:
+                    severity = "MEDIUM"
+                    event_type = "file_download"
+                
+                # Increase severity for suspicious patterns (unless clearly legitimate)
+                if not is_legitimate:
+                    if any(suspicious in command.lower() for suspicious in ["/tmp/", "/var/tmp/", "/dev/shm/", "127.0.0.1", "localhost"]):
+                        severity = "HIGH"
+                        event_type = "suspicious_download"
+                    
+                    if any(suspicious in url.lower() for suspicious in ["pastebin", "bit.ly", "tinyurl", ".onion"]):
+                        severity = "HIGH"
+                        event_type = "suspicious_url_download"
                 
                 details = f"File download using '{tool}' by {user} from {url} to {destination}"
+                if is_legitimate:
+                    details += " (legitimate usage)"
                 
                 event = IoCEvent(
                     timestamp=timestamp,
@@ -361,7 +463,9 @@ class ProcessExecution(BaseIoCCategory):
                         'command': command,
                         'url': url,
                         'destination': destination,
-                        'threat_type': 'file_download'
+                        'threat_type': 'file_download',
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
@@ -479,19 +583,36 @@ class ProcessExecution(BaseIoCCategory):
         return events
     
     def _detect_persistence_attempts(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect persistence mechanism creation through process execution."""
+        """Enhanced persistence detection with context awareness and filtering."""
         events = []
         
-        # Get persistence patterns
+        # Get patterns
         persistence_patterns = self.patterns.get("patterns", {}).get("persistence_commands", [])
+        ignore_patterns = self.patterns.get("patterns", {}).get("ignore_patterns", [])
+        legitimate_contexts = self.patterns.get("patterns", {}).get("legitimate_contexts", [])
+        
+        # FIRST: Check if this should be ignored (system events, crashes)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         command = self._extract_command_from_message(message)
         
+        # Skip if we couldn't extract meaningful user/command info
+        if user == 'unknown' and command in ['system_message', 'unknown']:
+            return events
+        
         for pattern in persistence_patterns:
             if pattern.lower() in message.lower():
-                severity = "HIGH"
-                event_type = "persistence_attempt"
+                # Check for legitimate context
+                is_legitimate = self._has_legitimate_context(message, legitimate_contexts)
+                
+                if is_legitimate:
+                    severity = "MEDIUM"  # Reduced severity for legitimate operations
+                    event_type = "legitimate_persistence"
+                else:
+                    severity = "HIGH"
+                    event_type = "persistence_attempt"
                 
                 # Determine persistence method
                 if "crontab" in pattern.lower():
@@ -506,9 +627,16 @@ class ProcessExecution(BaseIoCCategory):
                 elif "rc.local" in pattern.lower():
                     persistence_method = "init_script"
                     details = f"Init script persistence attempt by {user}: {command}"
+                elif "at " in pattern.lower():
+                    persistence_method = "scheduled_task"
+                    details = f"Scheduled task persistence attempt by {user}: {command}"
                 else:
                     persistence_method = "unknown"
                     details = f"Persistence mechanism attempt by {user}: {command}"
+                
+                # Add context information to details
+                if is_legitimate:
+                    details += " (legitimate system operation)"
                 
                 event = IoCEvent(
                     timestamp=timestamp,
@@ -523,7 +651,9 @@ class ProcessExecution(BaseIoCCategory):
                         'command': command,
                         'persistence_method': persistence_method,
                         'pattern_matched': pattern,
-                        'threat_type': 'persistence'
+                        'threat_type': 'persistence',
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True  # New field
                     }
                 )
                 
@@ -791,37 +921,64 @@ class ProcessExecution(BaseIoCCategory):
     
     # Helper methods for extraction
     def _extract_user_from_message(self, message: str) -> str:
-        """Extract username from log message."""
-        patterns = [
+        """Enhanced user extraction with better context awareness."""
+        # FIRST: Try specific structured patterns
+        structured_patterns = [
             r'user=([^\s,]+)',
             r'USER=([^\s,]+)',
             r'uid=\d+\(([^)]+)\)',
-            r'\s([a-z_][a-z0-9_]{0,30})\s'
+            r'sudo:\s+([^\s]+)\s+:',  # sudo logs
+            r'session opened for user\s+([^\s]+)',  # PAM logs
+            r'for user\s+([^\s]+)',  # General user context
         ]
         
-        for pattern in patterns:
+        for pattern in structured_patterns:
             match = re.search(pattern, message)
             if match:
-                return match.group(1)
+                user = match.group(1)
+                # VALIDATE: Don't return system event types as users
+                if not self._is_system_event_type(user):
+                    return user
+        
+        # AVOID: The overly broad fallback pattern that matches anything
+        # Only use if we have high confidence this is actually a user context
+        if 'user ' in message.lower() or 'sudo' in message.lower():
+            # Try the broader pattern but validate result
+            broad_pattern = r'\s([a-z_][a-z0-9_]{0,30})\s'
+            match = re.search(broad_pattern, message)
+            if match:
+                user = match.group(1)
+                if not self._is_system_event_type(user):
+                    return user
         
         return 'unknown'
     
     def _extract_command_from_message(self, message: str) -> str:
-        """Extract command from log message."""
-        patterns = [
+        """Enhanced command extraction that avoids system messages."""
+        # FIRST: Check if this is a system message that shouldn't have a "command"
+        if self._is_system_message(message):
+            return 'system_message'
+        
+        # THEN: Use structured patterns
+        command_patterns = [
             r'COMMAND=([^\n\r]+)',
             r'command=([^\n\r]+)',
             r'executed:\s*([^\n\r]+)',
-            r'exec.*:\s*([^\n\r]+)'
+            r'exec.*:\s*([^\n\r]+)',
+            r'sudo.*:\s*([^\n\r]+)',  # sudo command logs
         ]
         
-        for pattern in patterns:
+        for pattern in command_patterns:
             match = re.search(pattern, message)
             if match:
                 return match.group(1).strip()
         
-        # Fallback: return the message itself if no specific command pattern found
-        return message[:200]  # Limit length
+        # AVOID: Returning arbitrary log content as "command"
+        # Only return message content if it looks like an actual command context
+        if any(indicator in message.lower() for indicator in ['executed', 'command', 'sudo', 'bash', 'sh']):
+            return message[:200]  # Limit length
+        
+        return 'unknown'
     
     def _extract_pid_from_message(self, message: str) -> Optional[str]:
         """Extract PID from log message."""
@@ -971,3 +1128,97 @@ class ProcessExecution(BaseIoCCategory):
                 return parts[-1]  # Last argument
         
         return 'unknown'
+    
+    def _should_ignore_message(self, message: str, ignore_patterns: List[str]) -> bool:
+        """Check if message should be ignored (system events, crashes, etc.)."""
+        if not ignore_patterns:
+            return False
+        
+        message_lower = message.lower()
+        for pattern in ignore_patterns:
+            if pattern.lower() in message_lower:
+                return True
+        return False
+    
+    def _has_legitimate_context(self, message: str, legitimate_contexts: List[str]) -> bool:
+        """Check if the message indicates legitimate system operation."""
+        if not legitimate_contexts:
+            return False
+        
+        message_lower = message.lower()
+        for context in legitimate_contexts:
+            if context.lower() in message_lower:
+                return True
+        return False
+    
+    def _is_system_event_type(self, word: str) -> bool:
+        """Check if a word is a system event type, not a username."""
+        if not word or len(word) < 2:
+            return True
+        
+        system_event_types = {
+            'segfault', 'kernel', 'crashed', 'signal', 'fault', 
+            'error', 'warning', 'trace', 'bug', 'panic', 'oops',
+            'killed', 'terminated', 'memory', 'allocation',
+            'systemd', 'audit', 'rip', 'rsp'
+        }
+        return word.lower() in system_event_types
+    
+    def _is_system_message(self, message: str) -> bool:
+        """Identify system messages that don't contain user commands."""
+        system_indicators = [
+            'segfault', 'kernel:', 'crashed', 'signal', 'fault',
+            'systemd:', 'audit:', 'WARNING:', 'BUG:', 'Oops:',
+            'killed by signal', 'terminated by signal', 'core dumped',
+            'out of memory', 'page allocation failure'
+        ]
+        message_lower = message.lower()
+        return any(indicator.lower() in message_lower for indicator in system_indicators)
+    
+    def _determine_network_tool_risk(self, tool: str, high_risk: List[str], 
+                                   medium_risk: List[str], low_risk: List[str]) -> str:
+        """Determine risk level based on network tool classification."""
+        tool_lower = tool.lower()
+        
+        # Check high risk tools
+        for high_tool in high_risk:
+            if high_tool.lower() in tool_lower:
+                return "HIGH"
+        
+        # Check medium risk tools  
+        for medium_tool in medium_risk:
+            if medium_tool.lower() in tool_lower:
+                return "MEDIUM"
+                
+        # Check low risk tools
+        for low_tool in low_risk:
+            if low_tool.lower() in tool_lower:
+                return "LOW"
+        
+        # Default to medium for unclassified tools
+        return "MEDIUM"
+    
+    def _is_legitimate_network_usage(self, message: str, tool: str) -> bool:
+        """Check if network tool usage appears legitimate."""
+        # Check for common legitimate patterns
+        legitimate_indicators = [
+            'monitoring', 'backup', 'maintenance', 'troubleshooting',
+            'diagnostic', 'health check', 'connectivity test',
+            'network test', 'performance test', 'bandwidth test'
+        ]
+        
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in legitimate_indicators)
+    
+    def _is_legitimate_download(self, message: str, command: str) -> bool:
+        """Check if download appears legitimate."""
+        # Check for package managers and legitimate sources
+        legitimate_patterns = [
+            'apt', 'yum', 'dnf', 'pip', 'npm', 'gem', 'cargo',
+            'github.com', 'gitlab.com', 'pypi.org', 'npmjs.com',
+            'archive.ubuntu.com', 'security.ubuntu.com',
+            'fedoraproject.org', 'centos.org'
+        ]
+        
+        combined_text = f"{message} {command}".lower()
+        return any(pattern in combined_text for pattern in legitimate_patterns)
