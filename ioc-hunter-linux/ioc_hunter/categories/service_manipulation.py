@@ -192,24 +192,54 @@ class ServiceManipulation(BaseIoCCategory):
             return events
     
     def _detect_service_creation(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect new service creation and registration."""
+        """Enhanced service creation detection with context awareness and filtering."""
         events = []
         
-        # Get service creation patterns
-        creation_patterns = self.patterns.get("patterns", {}).get("service_creation", [])
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        creation_patterns = patterns_dict.get("service_creation", [])
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        high_risk_services = patterns_dict.get("high_risk_services", [])
+        medium_risk_services = patterns_dict.get("medium_risk_services", [])
+        low_risk_services = patterns_dict.get("low_risk_services", [])
+        
+        # FIRST: Check if this should be ignored (legitimate system services)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         service_name = self._extract_service_name_from_message(message)
         
+        # Skip if we couldn't extract meaningful service info
+        if not service_name or service_name == 'unknown':
+            return events
+        
         for pattern in creation_patterns:
             if pattern.lower() in message.lower():
-                severity = "MEDIUM"
-                event_type = "service_creation"
+                # Check if this is a legitimate service operation
+                is_legitimate = (
+                    self._has_legitimate_context(message, legitimate_contexts) or
+                    self._is_legitimate_service(service_name, message)
+                )
                 
-                # Check if suspicious service
-                if any(sus_svc in service_name.lower() for sus_svc in self.suspicious_services):
-                    severity = "HIGH"
-                    event_type = "suspicious_service_creation"
+                # Check if service name matches suspicious patterns (with enhanced matching)
+                is_suspicious_service = any(
+                    re.search(sus_svc.lower(), service_name.lower()) 
+                    for sus_svc in self.suspicious_services
+                )
+                
+                if is_legitimate:
+                    severity = "LOW"
+                    event_type = "legitimate_service_creation"
+                elif is_suspicious_service:
+                    # Determine risk level for suspicious services
+                    risk_level = self._determine_service_risk(service_name, high_risk_services, medium_risk_services, low_risk_services)
+                    severity = risk_level
+                    event_type = f"{risk_level.lower()}_risk_suspicious_service"
+                else:
+                    severity = "MEDIUM"
+                    event_type = "service_creation"
                 
                 if "systemctl enable" in message.lower():
                     details = f"Service '{service_name}' enabled by {user}"
@@ -223,6 +253,10 @@ class ServiceManipulation(BaseIoCCategory):
                 else:
                     details = f"Service '{service_name}' created/registered by {user}"
                     action = "created"
+                
+                # Add context information to details
+                if is_legitimate:
+                    details += " (legitimate system service)"
                 
                 # Extract service file path if available
                 file_path = self._extract_service_file_path(message)
@@ -240,8 +274,11 @@ class ServiceManipulation(BaseIoCCategory):
                         'service_name': service_name,
                         'action': action,
                         'service_file_path': file_path,
-                        'is_suspicious_service': any(sus_svc in service_name.lower() for sus_svc in self.suspicious_services),
-                        'pattern_matched': pattern
+                        'is_suspicious_service': is_suspicious_service,
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True,  # New field
+                        'pattern_matched': pattern,
+                        'risk_level': self._determine_service_risk(service_name, high_risk_services, medium_risk_services, low_risk_services).lower() if is_suspicious_service else 'low'
                     }
                 )
                 
@@ -513,17 +550,34 @@ class ServiceManipulation(BaseIoCCategory):
         return events
     
     def _detect_suspicious_service_startup(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect suspicious service startup patterns."""
+        """Enhanced suspicious service startup detection with context awareness and filtering."""
         events = []
+        
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        high_risk_services = patterns_dict.get("high_risk_services", [])
+        medium_risk_services = patterns_dict.get("medium_risk_services", [])
+        low_risk_services = patterns_dict.get("low_risk_services", [])
+        
+        # FIRST: Check if this should be ignored (legitimate system services)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         service_name = self._extract_service_name_from_message(message)
         
+        # Skip if we couldn't extract meaningful service info
+        if not service_name or service_name == 'unknown':
+            return events
+        
         # Check for services with suspicious names or characteristics
+        # FIXED: More specific patterns that won't match legitimate services
         suspicious_indicators = [
-            # Network services
-            (r'.*nc.*\.service', 'netcat_service'),
-            (r'.*netcat.*\.service', 'netcat_service'), 
+            # Network services - more specific patterns
+            (r'\bnc\b\.service', 'netcat_service'),
+            (r'\bnetcat\b\.service', 'netcat_service'), 
             (r'.*backdoor.*\.service', 'backdoor_service'),
             (r'.*reverse.*\.service', 'reverse_shell_service'),
             (r'.*shell.*\.service', 'shell_service'),
@@ -540,10 +594,26 @@ class ServiceManipulation(BaseIoCCategory):
         
         for pattern, indicator_type in suspicious_indicators:
             if re.search(pattern, message.lower()):
-                severity = "HIGH"
-                event_type = "suspicious_service_startup"
+                # Check if this is a legitimate service
+                is_legitimate = (
+                    self._has_legitimate_context(message, legitimate_contexts) or
+                    self._is_legitimate_service(service_name, message)
+                )
+                
+                # Always determine risk level for consistent metadata
+                risk_level = self._determine_service_risk(service_name, high_risk_services, medium_risk_services, low_risk_services)
+                
+                if is_legitimate:
+                    severity = "LOW"
+                    event_type = "legitimate_service_operation"
+                else:
+                    # Use determined risk level for suspicious services
+                    severity = risk_level
+                    event_type = f"{risk_level.lower()}_risk_suspicious_service"
                 
                 details = f"Suspicious service '{service_name}' startup detected - {indicator_type} pattern"
+                if is_legitimate:
+                    details += " (legitimate system service)"
                 
                 # Extract additional context
                 exec_start = self._extract_exec_start(message)
@@ -563,7 +633,10 @@ class ServiceManipulation(BaseIoCCategory):
                         'indicator_type': indicator_type,
                         'exec_start': exec_start,
                         'working_directory': working_directory,
-                        'pattern_matched': pattern
+                        'pattern_matched': pattern,
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True,  # New field
+                        'risk_level': risk_level.lower()
                     }
                 )
                 
@@ -888,3 +961,77 @@ class ServiceManipulation(BaseIoCCategory):
                 return match.group(1)
         
         return None
+
+    def _should_ignore_message(self, message: str, ignore_patterns: List[str]) -> bool:
+        """Check if message should be ignored (legitimate system services, etc.)."""
+        if not ignore_patterns:
+            return False
+        
+        message_lower = message.lower()
+        for pattern in ignore_patterns:
+            if pattern.lower() in message_lower:
+                return True
+        return False
+    
+    def _has_legitimate_context(self, message: str, legitimate_contexts: List[str]) -> bool:
+        """Check if the message indicates legitimate system operation."""
+        if not legitimate_contexts:
+            return False
+        
+        message_lower = message.lower()
+        for context in legitimate_contexts:
+            if context.lower() in message_lower:
+                return True
+        return False
+    
+    def _determine_service_risk(self, service_name: str, high_risk: List[str], 
+                               medium_risk: List[str], low_risk: List[str]) -> str:
+        """Determine risk level based on service classification."""
+        service_lower = service_name.lower()
+        
+        # Check high risk services
+        for high_service in high_risk:
+            if re.search(high_service.lower(), service_lower):
+                return "HIGH"
+        
+        # Check medium risk services  
+        for medium_service in medium_risk:
+            if re.search(medium_service.lower(), service_lower):
+                return "MEDIUM"
+                
+        # Check low risk services
+        for low_service in low_risk:
+            if re.search(low_service.lower(), service_lower):
+                return "LOW"
+        
+        # Default to medium for unclassified services with suspicious patterns
+        return "MEDIUM"
+    
+    def _is_legitimate_service(self, service_name: str, message: str) -> bool:
+        """Check if service appears to be legitimate system service."""
+        # Common legitimate service patterns
+        legitimate_indicators = [
+            'systemd', 'cron', 'logrotate', 'session', 'cleanup',
+            'tmp', 'backup', 'update', 'maintenance', 'php',
+            'apache', 'nginx', 'mysql', 'postgresql', 'redis'
+        ]
+        
+        service_lower = service_name.lower()
+        message_lower = message.lower()
+        
+        # Check service name for legitimate patterns
+        for indicator in legitimate_indicators:
+            if indicator in service_lower:
+                return True
+        
+        # Check message context for legitimate operations
+        legitimate_contexts = [
+            'started by systemd', 'system service', 'scheduled',
+            'package installation', 'system update'
+        ]
+        
+        for context in legitimate_contexts:
+            if context in message_lower:
+                return True
+        
+        return False

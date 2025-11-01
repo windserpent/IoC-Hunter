@@ -414,24 +414,54 @@ class PrivilegeEscalation(BaseIoCCategory):
         return events
     
     def _detect_setuid_modifications(self, timestamp: datetime, message: str, source: str, entry) -> List[IoCEvent]:
-        """Detect setuid/setgid binary modifications."""
+        """Enhanced setuid/setgid modification detection with context awareness and filtering."""
         events = []
         
-        setuid_patterns = self.patterns.get("patterns", {}).get("setuid_usage", [])
+        # Get patterns for filtering and context
+        patterns_dict = self.patterns.get("patterns", {})
+        setuid_patterns = patterns_dict.get("setuid_usage", [])
+        ignore_patterns = patterns_dict.get("ignore_patterns", [])
+        legitimate_contexts = patterns_dict.get("legitimate_contexts", [])
+        high_risk_operations = patterns_dict.get("high_risk_operations", [])
+        medium_risk_operations = patterns_dict.get("medium_risk_operations", [])
+        low_risk_operations = patterns_dict.get("low_risk_operations", [])
+        
+        # FIRST: Check if this should be ignored (system events, legitimate operations)
+        if self._should_ignore_message(message, ignore_patterns):
+            return events
         
         user = self._extract_user_from_message(message)
         command = self._extract_command_from_message(message)
         
+        # Skip if we couldn't extract meaningful user/command info
+        if user == 'unknown' and command == 'unknown':
+            return events
+        
         for pattern in setuid_patterns:
             if pattern.lower() in message.lower():
-                severity = "HIGH"
-                event_type = "setuid_modification"
+                # Check if this is a legitimate operation
+                is_legitimate = (
+                    self._has_legitimate_context(message, legitimate_contexts) or
+                    self._is_legitimate_privilege_operation(message, command)
+                )
+                
+                # Determine risk level for the operation
+                operation_risk = self._determine_operation_risk(command, high_risk_operations, medium_risk_operations, low_risk_operations)
+                
+                if is_legitimate:
+                    severity = "MEDIUM" if operation_risk == "HIGH" else "LOW"
+                    event_type = "legitimate_setuid_modification"
+                else:
+                    severity = operation_risk
+                    event_type = f"{operation_risk.lower()}_risk_privilege_escalation"
                 
                 # Extract file being modified
                 file_match = re.search(r'chmod.*?([/\w\-\.]+)', message)
                 target_file = file_match.group(1) if file_match else "unknown"
                 
                 details = f"User {user} modified setuid/setgid permissions on {target_file}"
+                if is_legitimate:
+                    details += " (legitimate system operation)"
                 
                 event = IoCEvent(
                     timestamp=timestamp,
@@ -446,7 +476,10 @@ class PrivilegeEscalation(BaseIoCCategory):
                         'target_file': target_file,
                         'command': command,
                         'pattern_matched': pattern,
-                        'operation': 'setuid_modification'
+                        'operation': 'setuid_modification',
+                        'is_legitimate': is_legitimate,  # New field
+                        'context_verified': True,  # New field
+                        'risk_level': operation_risk.lower()
                     }
                 )
                 
@@ -791,27 +824,38 @@ class PrivilegeEscalation(BaseIoCCategory):
         return False
     
     def _extract_user_from_message(self, message: str) -> str:
-        """Extract username from log message."""
-        # Common patterns for user extraction
-        patterns = [
+        """Enhanced user extraction with better context awareness."""
+        # FIRST: Try specific structured patterns
+        structured_patterns = [
             r'user=([^\s,]+)',
             r'USER=([^\s,]+)',
             r'for user ([^\s,]+)',
             r'by user ([^\s,]+)',
             r'([^\s]+)@',  # user@hostname
             r'uid=\d+\(([^)]+)\)',
-            r'\s([a-z_][a-z0-9_]{0,30})\s'  # Generic username pattern
+            r'sudo:\s+([^\s]+)\s+:',  # sudo logs
         ]
         
-        for pattern in patterns:
+        for pattern in structured_patterns:
             match = re.search(pattern, message)
             if match:
                 user = match.group(1)
-                # Filter out common non-user strings
-                if user not in ['root', 'sudo', 'passwd', 'su', 'for', 'by', 'user']:
-                    return user
-                elif user == 'root':
-                    return 'root'
+                # VALIDATE: Don't return system event types as users
+                if not self._is_system_event_type(user):
+                    # Filter out common non-user strings but allow root
+                    if user not in ['sudo', 'passwd', 'su', 'for', 'by', 'user'] or user == 'root':
+                        return user
+        
+        # AVOID: The overly broad fallback pattern unless we have high confidence
+        if 'user ' in message.lower() or 'sudo' in message.lower():
+            # Try the broader pattern but validate result
+            broad_pattern = r'\s([a-z_][a-z0-9_]{0,30})\s'
+            match = re.search(broad_pattern, message)
+            if match:
+                user = match.group(1)
+                if not self._is_system_event_type(user):
+                    if user not in ['sudo', 'passwd', 'su', 'for', 'by', 'user'] or user == 'root':
+                        return user
         
         return 'unknown'
     
@@ -859,3 +903,72 @@ class PrivilegeEscalation(BaseIoCCategory):
         """Extract IP address from log message."""
         ips = extract_ip_addresses(message)
         return ips[0] if ips else None
+
+    def _should_ignore_message(self, message: str, ignore_patterns: List[str]) -> bool:
+        """Check if message should be ignored (system events, legitimate operations, etc.)."""
+        if not ignore_patterns:
+            return False
+        
+        message_lower = message.lower()
+        for pattern in ignore_patterns:
+            if pattern.lower() in message_lower:
+                return True
+        return False
+    
+    def _has_legitimate_context(self, message: str, legitimate_contexts: List[str]) -> bool:
+        """Check if the message indicates legitimate system operation."""
+        if not legitimate_contexts:
+            return False
+        
+        message_lower = message.lower()
+        for context in legitimate_contexts:
+            if context.lower() in message_lower:
+                return True
+        return False
+    
+    def _is_system_event_type(self, word: str) -> bool:
+        """Check if a word is a system event type, not a username."""
+        if not word or len(word) < 2:
+            return True
+        
+        system_event_types = {
+            'setuid', 'setgid', 'chmod', 'chown', 'mount', 'umount',
+            'kernel', 'systemd', 'audit', 'passwd', 'group', 'shadow',
+            'sudo', 'su', 'login', 'logout', 'session', 'pam'
+        }
+        return word.lower() in system_event_types
+    
+    def _determine_operation_risk(self, operation: str, high_risk: List[str], 
+                                 medium_risk: List[str], low_risk: List[str]) -> str:
+        """Determine risk level based on privilege operation classification."""
+        operation_lower = operation.lower()
+        
+        # Check high risk operations
+        for high_op in high_risk:
+            if high_op.lower() in operation_lower:
+                return "HIGH"
+        
+        # Check medium risk operations  
+        for medium_op in medium_risk:
+            if medium_op.lower() in operation_lower:
+                return "MEDIUM"
+                
+        # Check low risk operations
+        for low_op in low_risk:
+            if low_op.lower() in operation_lower:
+                return "LOW"
+        
+        # Default to medium for unclassified operations
+        return "MEDIUM"
+    
+    def _is_legitimate_privilege_operation(self, message: str, command: str) -> bool:
+        """Check if privilege operation appears legitimate."""
+        # Check for common legitimate patterns
+        legitimate_indicators = [
+            'package installation', 'system update', 'maintenance',
+            'backup', 'scheduled', 'systemd', 'cron', 'logrotate',
+            'apt install', 'apt-get', 'dpkg', 'yum install', 'dnf install'
+        ]
+        
+        combined_text = f"{message} {command}".lower()
+        return any(indicator in combined_text for indicator in legitimate_indicators)
